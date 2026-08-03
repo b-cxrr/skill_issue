@@ -1,0 +1,253 @@
+[gd_scene format=3 uid="uid://ow6i1jih4rl8"]
+
+[ext_resource type="Script" uid="uid://cq2h87p6i3cjx" path="res://Scripts/background.gd" id="1_344ge"]
+[ext_resource type="Script" uid="uid://buwfitkwr2oll" path="res://Scripts/arena.gd" id="1_bo1nx"]
+[ext_resource type="Script" uid="uid://bhguyx6o42nx" path="res://Scripts/orbit_player.gd" id="2_8gbba"]
+[ext_resource type="PackedScene" uid="uid://ppaaikd64882" path="res://Scenes/echo.tscn" id="3_jjvhh"]
+[ext_resource type="PackedScene" uid="uid://cidot5v5fvf8s" path="res://Scenes/phase_gate.tscn" id="3_kry3j"]
+[ext_resource type="AudioStream" uid="uid://cktcqh4wp6i3n" path="res://SoundFX/Digital_Switch_01.wav" id="6_344ge"]
+[ext_resource type="AudioStream" uid="uid://b2yebn20s6o6w" path="res://SoundFX/Digital_Lap_01.wav" id="7_344ge"]
+[ext_resource type="AudioStream" uid="uid://drio67j51swjy" path="res://SoundFX/Digital_Impact_01.wav" id="8_344ge"]
+[ext_resource type="Script" uid="uid://3w1k05lyx4kq" path="res://Scripts/burst_particles.gd" id="9_ynf5e"]
+[ext_resource type="Script" uid="uid://476smejix5k1" path="res://Scripts/Pause_Menu.gd" id="10_hptm8"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_tls2j"]
+radius = 14.0
+
+[sub_resource type="LabelSettings" id="LabelSettings_tls2j"]
+font_size = 22
+font_color = Color(1, 0.8352941, 0.2901961, 1)
+
+[node name="Main" type="Node2D" unique_id=446037159]
+
+[node name="Background" type="Node2D" parent="." unique_id=1393227986]
+z_index = -100
+script = ExtResource("1_344ge")
+
+[node name="Arena" type="Node2D" parent="." unique_id=351608738]
+script = ExtResource("1_bo1nx")
+gate_scene = ExtResource("3_kry3j")
+echo_scene = ExtResource("3_jjvhh")
+
+[node name="Player" type="Area2D" parent="Arena" unique_id=569246917]
+script = ExtResource("2_8gbba")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Arena/Player" unique_id=840386853]
+shape = SubResource("CircleShape2D_tls2j")
+
+[node name="ShiftSound" type="AudioStreamPlayer" parent="Arena/Player" unique_id=1652146940]
+stream = ExtResource("6_344ge")
+volume_db = -5.0
+
+[node name="Gates" type="Node2D" parent="Arena" unique_id=1546041584]
+
+[node name="ShiftTrail" type="Line2D" parent="Arena" unique_id=1153790173]
+visible = false
+z_index = 4
+width = 11.0
+default_color = Color(0.20784314, 0.9490196, 0.9098039, 1)
+antialiased = true
+
+[node name="LapSound" type="AudioStreamPlayer" parent="Arena" unique_id=748633626]
+stream = ExtResource("7_344ge")
+volume_db = -4.0
+
+[node name="CollisionSound" type="AudioStreamPlayer" parent="Arena" unique_id=284130873]
+stream = ExtResource("8_344ge")
+volume_db = -2.0
+
+[node name="BurstParticles" type="Node2D" parent="Arena" unique_id=1565089016]
+z_index = 10
+script = ExtResource("9_ynf5e")
+
+[node name="UI" type="CanvasLayer" parent="." unique_id=680536527]
+
+[node name="AchievementLabel" type="Label" parent="UI" unique_id=1860743836]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(420, 0)
+anchors_preset = -1
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -20.0
+offset_top = 120.0
+offset_right = 20.0
+offset_bottom = 220.0
+grow_horizontal = 2
+theme_override_font_sizes/font_size = 22
+text = "ACHIEVEMENT UNLOCKED
+ACTUAL SKILL
+GILDED CORE EQUIPPED"
+label_settings = SubResource("LabelSettings_tls2j")
+horizontal_alignment = 1
+
+[node name="ScoreLabel" type="Label" parent="UI" unique_id=1863358044]
+unique_name_in_owner = true
+anchors_preset = -1
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -150.0
+offset_top = 30.0
+offset_right = 150.0
+offset_bottom = 100.0
+grow_horizontal = 2
+offset_transform_enabled = true
+theme_override_font_sizes/font_size = 42
+text = "000"
+horizontal_alignment = 1
+
+[node name="StartCenter" type="CenterContainer" parent="UI" unique_id=950005539]
+unique_name_in_owner = true
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="StartVBox" type="VBoxContainer" parent="UI/StartCenter" unique_id=1374153413]
+layout_mode = 2
+theme_override_constants/separation = 18
+
+[node name="TitleLabel" type="Label" parent="UI/StartCenter/StartVBox" unique_id=16644261]
+layout_mode = 2
+theme_override_font_sizes/font_size = 52
+text = "SKILL ISSUE"
+horizontal_alignment = 1
+
+[node name="InstructionLabel" type="Label" parent="UI/StartCenter/StartVBox" unique_id=1861757820]
+layout_mode = 2
+text = "TAP TO SWITCH LANES
+AVOID YOUR ECHO
+"
+horizontal_alignment = 1
+
+[node name="StartLabel" type="Label" parent="UI/StartCenter/StartVBox" unique_id=1308875763]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "TAP TO BEGIN"
+horizontal_alignment = 1
+
+[node name="GameOverCenter" type="CenterContainer" parent="UI" unique_id=2092668923]
+unique_name_in_owner = true
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="GameOverVBox" type="VBoxContainer" parent="UI/GameOverCenter" unique_id=1978647894]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="GameOverLabel" type="Label" parent="UI/GameOverCenter/GameOverVBox" unique_id=1858976505]
+layout_mode = 2
+theme_override_font_sizes/font_size = 48
+text = "SKILL ISSUE"
+horizontal_alignment = 1
+
+[node name="FinalScoreLabel" type="Label" parent="UI/GameOverCenter/GameOverVBox" unique_id=1239577956]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 30
+text = "SCORE 000"
+horizontal_alignment = 1
+
+[node name="BestScoreLabel" type="Label" parent="UI/GameOverCenter/GameOverVBox" unique_id=1978137469]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "BEST 000"
+horizontal_alignment = 1
+
+[node name="RestartLabel" type="Label" parent="UI/GameOverCenter/GameOverVBox" unique_id=555686696]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "TAP TO RESTART"
+horizontal_alignment = 1
+
+[node name="HitFlash" type="ColorRect" parent="UI" unique_id=47599001]
+unique_name_in_owner = true
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(1, 0.19215687, 0.37254903, 0)
+
+[node name="PauseMenu" type="Control" parent="UI" unique_id=1967513499]
+unique_name_in_owner = true
+process_mode = 3
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("10_hptm8")
+
+[node name="PauseButton" type="Button" parent="UI/PauseMenu" unique_id=601148058]
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -84.0
+offset_top = 20.0
+offset_right = -20.0
+offset_bottom = 84.0
+grow_horizontal = 0
+text = "II"
+
+[node name="PauseOverlay" type="ColorRect" parent="UI/PauseMenu" unique_id=2085571337]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.78431374)
+
+[node name="PauseCenter" type="CenterContainer" parent="UI/PauseMenu/PauseOverlay" unique_id=1493381376]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="PauseVBox" type="VBoxContainer" parent="UI/PauseMenu/PauseOverlay/PauseCenter" unique_id=525794993]
+custom_minimum_size = Vector2(280, 0)
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="PausedLabel" type="Label" parent="UI/PauseMenu/PauseOverlay/PauseCenter/PauseVBox" unique_id=745678123]
+layout_mode = 2
+theme_override_font_sizes/font_size = 42
+text = "PAUSED"
+horizontal_alignment = 1
+
+[node name="ResumeButton" type="Button" parent="UI/PauseMenu/PauseOverlay/PauseCenter/PauseVBox" unique_id=1961315028]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+text = "RESUME"
+
+[node name="SoundButton" type="Button" parent="UI/PauseMenu/PauseOverlay/PauseCenter/PauseVBox" unique_id=531149448]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+
+[node name="VibrationButton" type="Button" parent="UI/PauseMenu/PauseOverlay/PauseCenter/PauseVBox" unique_id=360785759]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+
+[node name="RestartButton" type="Button" parent="UI/PauseMenu/PauseOverlay/PauseCenter/PauseVBox" unique_id=785447847]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+text = "RESTART"
