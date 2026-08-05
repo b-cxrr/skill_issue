@@ -19,6 +19,7 @@ extends Node2D
 @onready var game_over_vbox: VBoxContainer = (%GameOverVBox)
 
 @onready var pause_menu: SkillPauseMenu = (%PauseMenu)
+@onready var game_over_overlay: ColorRect = (%GameOverOverlay)
 
 @export var maximum_echoes: int = 1
 @export var gate_scene: PackedScene
@@ -49,7 +50,7 @@ var achievement_tween: Tween
 
 func _ready() -> void:
 	player.set_gilded_skin(SaveManager.level_10_skin_unlocked)
-
+	game_over_overlay.visible = false
 	achievement_label.visible = false
 
 	pause_menu.call_deferred("set_gameplay_available",false)
@@ -96,7 +97,7 @@ func _on_player_lap_completed(
 
 	SettingsManager.vibrate(35, 0.35)
 	_generate_gates()
-	if current_score < 2:
+	if current_score < 3:
 		return
 	if echo_scene == null:
 		push_warning("No Echo scene assigned to Arena.")
@@ -119,14 +120,17 @@ func _on_player_lap_completed(
 	)
 
 	echo.setup(
-		path,
-		recorded_speed,
-		phase_offset
-	)
+	path,
+	recorded_speed,
+	phase_offset,
+	_get_echo_speed_multiplier(),
+	_get_echo_warning_time(),
+	_get_echo_collision_radius()
+)
 
 	add_child(echo)
 	
-	echo.player_hit.connect(_on_echo_hit_player)
+	echo.player_hit.connect(_on_hazard_hit_player)
 
 	_limit_active_echoes()
 
@@ -140,11 +144,12 @@ func _draw() -> void:
 	if lap_pulse_alpha > 0.0:
 		draw_arc(Vector2.ZERO,lap_pulse_radius,0.0,TAU,128,Color(0.2,0.95,0.9,lap_pulse_alpha),7.0,true)
 
-func _on_echo_hit_player() -> void:
+func _on_hazard_hit_player(hazard: Node2D) -> void:
 	if is_game_over:
 		return
 
 	is_game_over = true
+	_highlight_hazard(hazard)
 	pause_menu.set_gameplay_available(false)
 	_play_collision_effect()
 	burst_particles.create_burst(
@@ -254,10 +259,12 @@ func _generate_gates() -> void:
 
 	var gate_total: int = 1
 
-	if current_score >= 1:
+	
+
+	if current_score >= 2:
 		gate_total = 2
 
-	if current_score >= 5:
+	if current_score >= 6:
 		gate_total = 3
 
 	if current_score >= 10:
@@ -322,7 +329,7 @@ func _generate_gates() -> void:
 
 		gate.configure_gate(gate_angle,gate_radius,blocks_inner)
 
-		gate.player_hit.connect(_on_echo_hit_player)
+		gate.player_hit.connect(_on_hazard_hit_player)
 		
 func _limit_active_echoes() -> void:
 	var active_echoes: Array[OrbitEcho] = []
@@ -557,7 +564,7 @@ func _animate_score() -> void:
 func _show_game_over() -> void:
 	if game_over_tween != null:
 		game_over_tween.kill()
-
+	game_over_overlay.visible = true
 	game_over_center.visible = true
 
 	game_over_vbox.pivot_offset = (
@@ -605,6 +612,23 @@ func _check_level_10_achievement() -> void:
 		return
 
 	player.set_gilded_skin(true)
+	burst_particles.create_burst(
+	player.position,
+	Color("#FFD54A"),
+	36,
+	120.0,
+	260.0,
+	0.75
+)
+
+	burst_particles.create_burst(
+	player.position,
+	Color("#B85CFF"),
+	18,
+	70.0,
+	180.0,
+	0.65
+	)
 	_show_achievement()
 
 	SettingsManager.vibrate(100, 0.70)
@@ -623,8 +647,8 @@ func _show_achievement() -> void:
 	achievement_label.scale = Vector2(0.75, 0.75)
 	achievement_label.modulate = Color(
 		1.0,
-		1.0,
-		1.0,
+		0.84,
+		0.35,
 		0.0
 	)
 
@@ -660,4 +684,111 @@ func _show_achievement() -> void:
 	achievement_tween.tween_callback(
 		func() -> void:
 			achievement_label.visible = false
+	)
+func _get_echo_speed_multiplier() -> float:
+	if current_score <= 4:
+		return 0.72
+
+	if current_score <= 7:
+		return 0.78
+
+	if current_score <= 9:
+		return 0.82
+
+	return 0.85
+
+
+func _get_echo_warning_time() -> float:
+	if current_score <= 4:
+		return 0.44
+
+	if current_score <= 7:
+		return 0.38
+
+	return 0.32
+
+
+func _get_echo_collision_radius() -> float:
+	if current_score <= 4:
+		return 10.0
+
+	if current_score <= 7:
+		return 11.0
+
+	return 12.0
+
+func _highlight_hazard(
+	hazard: Node2D
+) -> void:
+	if not is_instance_valid(hazard):
+		return
+
+	var original_scale: Vector2 = hazard.scale
+
+	# Create a separate golden ring around the hazard.
+	var impact_ring: Line2D = Line2D.new()
+
+	impact_ring.width = 4.0
+	impact_ring.default_color = Color("#FFD85A")
+	impact_ring.closed = true
+	impact_ring.antialiased = true
+	impact_ring.z_index = 100
+
+	var point_count: int = 40
+
+	for index: int in range(point_count):
+		var point_angle: float = (
+			TAU * float(index) / float(point_count)
+		)
+
+		impact_ring.add_point(
+			Vector2.from_angle(point_angle) * 25.0
+		)
+
+	impact_ring.position = to_local(
+		hazard.global_position
+	)
+
+	impact_ring.scale = Vector2(0.65, 0.65)
+
+	add_child(impact_ring)
+
+	# Enlarge the colliding hazard.
+	var highlight_tween: Tween = create_tween()
+
+	highlight_tween.tween_property(
+		hazard,
+		"scale",
+		original_scale * 1.55,
+		0.07
+	).set_trans(
+		Tween.TRANS_BACK
+	).set_ease(
+		Tween.EASE_OUT
+	)
+
+	# Expand and fade the independent golden ring.
+	highlight_tween.parallel().tween_property(
+		impact_ring,
+		"scale",
+		Vector2(1.9, 1.9),
+		0.32
+	)
+
+	highlight_tween.parallel().tween_property(
+		impact_ring,
+		"modulate",
+		Color(1.0, 1.0, 1.0, 0.0),
+		0.32
+	)
+
+	highlight_tween.tween_property(
+		hazard,
+		"scale",
+		original_scale,
+		0.14
+	)
+
+	highlight_tween.tween_callback(
+		impact_ring.queue_free
 	)

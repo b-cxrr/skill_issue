@@ -1,7 +1,7 @@
 class_name PhaseGate
 extends Area2D
 
-signal player_hit
+signal player_hit(hazard: Node2D)
 
 @export var gate_size: Vector2 = Vector2(52.0, 22.0)
 
@@ -57,7 +57,7 @@ func configure_gate(
 
 func _on_area_entered(area: Area2D) -> void:
 	if area is OrbitPlayer:
-		player_hit.emit()
+		player_hit.emit(self)
 
 
 func _draw() -> void:
