@@ -83,10 +83,7 @@ func _complete_lap() -> void:
 	current_lap_path.clear()
 	current_lap_path.append(current_radius)
 
-	print(
-		"Lap %d complete - recorded %d samples."
-		% [lap_number, completed_path.size()]
-	)
+
 
 	lap_completed.emit(
 		completed_path,

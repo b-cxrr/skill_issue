@@ -96,6 +96,21 @@ theme_override_font_sizes/font_size = 42
 text = "000"
 horizontal_alignment = 1
 
+[node name="NearMissLabel" type="Label" parent="UI" unique_id=2046471556]
+unique_name_in_owner = true
+visible = false
+anchors_preset = -1
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -150.0
+offset_top = 90.0
+offset_right = 150.0
+offset_bottom = 140.0
+grow_horizontal = 2
+theme_override_font_sizes/font_size = 22
+text = "NEAR MISS"
+horizontal_alignment = 1
+
 [node name="StartCenter" type="CenterContainer" parent="UI" unique_id=950005539]
 unique_name_in_owner = true
 anchors_preset = 15
@@ -121,6 +136,12 @@ text = "TAP TO SWITCH LANES
 AVOID YOUR ECHO
 "
 horizontal_alignment = 1
+
+[node name="SkinButton" type="Button" parent="UI/StartCenter/StartVBox" unique_id=62846673]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+text = "SKIN: DEFAULT"
 
 [node name="StartLabel" type="Label" parent="UI/StartCenter/StartVBox" unique_id=1308875763]
 unique_name_in_owner = true
@@ -173,6 +194,12 @@ unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "BEST 000"
+horizontal_alignment = 1
+
+[node name="StatsLabel" type="Label" parent="UI/GameOverCenter/GameOverVBox" unique_id=1756527607]
+unique_name_in_owner = true
+layout_mode = 2
+text = "NEAR MISSES: 000"
 horizontal_alignment = 1
 
 [node name="RestartLabel" type="Label" parent="UI/GameOverCenter/GameOverVBox" unique_id=555686696]

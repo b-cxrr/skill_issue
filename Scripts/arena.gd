@@ -15,12 +15,12 @@ extends Node2D
 @onready var start_label: Label = (%StartLabel)
 @onready var burst_particles: BurstParticles = ($BurstParticles)
 @onready var achievement_label: Label = (%AchievementLabel)
-
+@onready var skin_button: Button = (%SkinButton)
 @onready var game_over_vbox: VBoxContainer = (%GameOverVBox)
-
+@onready var near_miss_label: Label = (%NearMissLabel)
 @onready var pause_menu: SkillPauseMenu = (%PauseMenu)
 @onready var game_over_overlay: ColorRect = (%GameOverOverlay)
-
+@onready var stats_label: Label = (%StatsLabel)
 @export var maximum_echoes: int = 1
 @export var gate_scene: PackedScene
 @export var inner_radius: float = 150.0
@@ -37,7 +37,8 @@ var game_started: bool = false
 var collision_flash_tween: Tween
 var collision_shake_tween: Tween
 var shift_trail_tween: Tween
-
+var near_miss_tween: Tween
+var hazard_close_states: Dictionary = {}
 var lap_pulse_tween: Tween
 var lap_pulse_radius: float = 0.0
 var lap_pulse_alpha: float = 0.0
@@ -45,14 +46,21 @@ var score_tween: Tween
 var start_prompt_tween: Tween
 var game_over_tween: Tween
 var achievement_tween: Tween
-
+var current_near_misses: int = 0
 
 
 func _ready() -> void:
-	player.set_gilded_skin(SaveManager.level_10_skin_unlocked)
+	
+	near_miss_label.visible = false
+	
+	player.set_gilded_skin(
+		SaveManager.is_gilded_skin_selected()
+	)
 	game_over_overlay.visible = false
 	achievement_label.visible = false
-
+	
+	skin_button.pressed.connect(_on_skin_button_pressed)
+	_update_skin_button()
 	pause_menu.call_deferred("set_gameplay_available",false)
 	
 	get_viewport().size_changed.connect(_centre_arena)
@@ -97,7 +105,7 @@ func _on_player_lap_completed(
 
 	SettingsManager.vibrate(35, 0.35)
 	_generate_gates()
-	if current_score < 3:
+	if current_score < 4:
 		return
 	if echo_scene == null:
 		push_warning("No Echo scene assigned to Arena.")
@@ -120,13 +128,13 @@ func _on_player_lap_completed(
 	)
 
 	echo.setup(
-	path,
-	recorded_speed,
-	phase_offset,
-	_get_echo_speed_multiplier(),
-	_get_echo_warning_time(),
-	_get_echo_collision_radius()
-)
+		path,
+		recorded_speed,
+		phase_offset,
+		_get_echo_speed_multiplier(),
+		_get_echo_warning_time(),
+		_get_echo_collision_radius()
+	)
 
 	add_child(echo)
 	
@@ -177,7 +185,10 @@ func _on_hazard_hit_player(hazard: Node2D) -> void:
 	restart_allowed_at = Time.get_ticks_msec() + 350
 
 	var got_new_best: bool = (
-		SaveManager.submit_score(current_score)
+		SaveManager.record_completed_run(
+			current_score,
+			current_near_misses
+		)
 	)
 
 	final_score_label.text = (
@@ -190,6 +201,16 @@ func _on_hazard_hit_player(hazard: Node2D) -> void:
 
 	if got_new_best:
 		best_score_label.text += "  NEW"
+
+	stats_label.text = (
+		"NEAR MISSES %03d  |  TOTAL %03d\n"
+		+ "RUNS %03d  |  LAPS %03d"
+	) % [
+		current_near_misses,
+		SaveManager.total_near_misses,
+		SaveManager.total_runs,
+		SaveManager.total_laps
+	]
 
 	_show_game_over()
 	score_label.visible = false
@@ -204,8 +225,6 @@ func _on_hazard_hit_player(hazard: Node2D) -> void:
 		if child is OrbitEcho:
 			child.set_process(false)
 			child.set_deferred("monitoring", false)
-
-	print("GAME OVER - tap to restart")
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -253,25 +272,22 @@ func _generate_gates() -> void:
 		push_warning("No PhaseGate scene assigned.")
 		return
 
-	# Remove the previous lap's gates.
+# Remove the previous lap's gates.
 	for child: Node in gates_container.get_children():
-		child.queue_free()
+		hazard_close_states.erase(
+			child.get_instance_id()
+		)
 
-	var gate_total: int = 1
+		if child is Area2D:
+			var old_gate: Area2D = child as Area2D
 
-	
+			old_gate.set_deferred(
+				"monitoring",
+				false
+			)
 
-	if current_score >= 2:
-		gate_total = 2
-
-	if current_score >= 6:
-		gate_total = 3
-
-	if current_score >= 10:
-		gate_total = 4
-
-	if current_score >= 15:
-		gate_total = 5
+			child.queue_free()
+	var gate_total: int = _get_gate_total()
 
 	# Spread gates evenly around the complete orbit.
 	var spacing: float = (
@@ -283,10 +299,23 @@ func _generate_gates() -> void:
 		spacing * 0.5
 	)
 
-	# Slightly rotate the complete pattern each lap.
+	# Randomly rotate the pattern while preserving
+	# a safe area around the player's lap position.
+	var preferred_safe_angle: float = 0.70
+
+	var available_rotation: float = maxf(
+		0.0,
+		spacing * 0.5 - preferred_safe_angle
+	)
+
+	var rotation_limit: float = minf(
+		0.18,
+		available_rotation
+	)
+
 	var pattern_rotation: float = randf_range(
-		-0.18,
-		0.18
+		-rotation_limit,
+		rotation_limit
 	)
 
 	# Randomise which lane is blocked first.
@@ -613,21 +642,21 @@ func _check_level_10_achievement() -> void:
 
 	player.set_gilded_skin(true)
 	burst_particles.create_burst(
-	player.position,
-	Color("#FFD54A"),
-	36,
-	120.0,
-	260.0,
-	0.75
-)
+		player.position,
+		Color("#FFD54A"),
+		36,
+		120.0,
+		260.0,
+		0.75
+	)
 
 	burst_particles.create_burst(
-	player.position,
-	Color("#B85CFF"),
-	18,
-	70.0,
-	180.0,
-	0.65
+		player.position,
+		Color("#B85CFF"),
+		18,
+		70.0,
+		180.0,
+		0.65
 	)
 	_show_achievement()
 
@@ -686,34 +715,43 @@ func _show_achievement() -> void:
 			achievement_label.visible = false
 	)
 func _get_echo_speed_multiplier() -> float:
-	if current_score <= 4:
+	if current_score <= 7:
 		return 0.72
 
-	if current_score <= 7:
-		return 0.78
+	if current_score <= 11:
+		return 0.76
 
-	if current_score <= 9:
-		return 0.82
+	if current_score <= 15:
+		return 0.80
+
+	if current_score <= 19:
+		return 0.83
 
 	return 0.85
 
 
 func _get_echo_warning_time() -> float:
-	if current_score <= 4:
-		return 0.44
-
 	if current_score <= 7:
+		return 0.46
+
+	if current_score <= 11:
+		return 0.42
+
+	if current_score <= 15:
 		return 0.38
 
-	return 0.32
+	return 0.34
 
 
 func _get_echo_collision_radius() -> float:
-	if current_score <= 4:
-		return 10.0
-
 	if current_score <= 7:
-		return 11.0
+		return 9.5
+
+	if current_score <= 11:
+		return 10.5
+
+	if current_score <= 15:
+		return 11.5
 
 	return 12.0
 
@@ -791,4 +829,209 @@ func _highlight_hazard(
 
 	highlight_tween.tween_callback(
 		impact_ring.queue_free
+	)
+func _on_skin_button_pressed() -> void:
+	if not SaveManager.level_10_skin_unlocked:
+		return
+
+	var select_gilded: bool = (
+		not SaveManager.is_gilded_skin_selected()
+	)
+
+	if select_gilded:
+		SaveManager.select_skin(
+			SaveManager.GILDED_SKIN
+		)
+	else:
+		SaveManager.select_skin(
+			SaveManager.DEFAULT_SKIN
+		)
+
+	player.set_gilded_skin(
+		SaveManager.is_gilded_skin_selected()
+	)
+
+	_update_skin_button()
+
+
+func _update_skin_button() -> void:
+	if not SaveManager.level_10_skin_unlocked:
+		skin_button.text = (
+			"SKIN: DEFAULT\n"
+			+ "GILDED UNLOCKS AT 010"
+		)
+
+		skin_button.disabled = true
+		return
+
+	skin_button.disabled = false
+
+	if SaveManager.is_gilded_skin_selected():
+		skin_button.text = (
+			"SKIN: GILDED\n"
+			+ "TAP TO CHANGE"
+		)
+	else:
+		skin_button.text = (
+			"SKIN: DEFAULT\n"
+			+ "TAP TO CHANGE"
+		)
+func _get_gate_total() -> int:
+	if current_score >= 22:
+		return 5
+
+	if current_score >= 14:
+		return 4
+
+	if current_score >= 8:
+		return 3
+
+	if current_score >= 2:
+		return 2
+
+	return 1
+func _process(_delta: float) -> void:
+	if not game_started or is_game_over:
+		return
+
+	_check_gate_near_misses()
+	_check_echo_near_misses()
+	
+func _check_gate_near_misses() -> void:
+	for child: Node in gates_container.get_children():
+		if not child is PhaseGate:
+			continue
+
+		var gate: PhaseGate = child as PhaseGate
+		var local_player_position: Vector2 = (
+			gate.to_local(player.global_position)
+		)
+
+		var half_size: Vector2 = (
+			gate.gate_size * 0.5
+		)
+
+		var closest_point: Vector2 = Vector2(
+			clampf(
+				local_player_position.x,
+				-half_size.x,
+				half_size.x
+			),
+			clampf(
+				local_player_position.y,
+				-half_size.y,
+				half_size.y
+			)
+		)
+
+		var edge_distance: float = (
+			local_player_position.distance_to(
+				closest_point
+			)
+		)
+
+		_update_near_miss_state(
+			gate,
+			edge_distance <= 32.0
+		)
+
+
+func _check_echo_near_misses() -> void:
+	for child: Node in get_children():
+		if not child is OrbitEcho:
+			continue
+
+		var echo: OrbitEcho = child as OrbitEcho
+
+		var centre_distance: float = (
+			player.global_position.distance_to(
+				echo.global_position
+			)
+		)
+
+		_update_near_miss_state(
+			echo,
+			centre_distance <= 42.0
+		)
+func _update_near_miss_state(
+	hazard: Node2D,
+	is_close: bool
+) -> void:
+	var hazard_id: int = hazard.get_instance_id()
+
+	var was_close: bool = bool(
+		hazard_close_states.get(
+			hazard_id,
+			false
+		)
+	)
+
+	if was_close and not is_close:
+		hazard_close_states[hazard_id] = false
+		_show_near_miss()
+		return
+
+	hazard_close_states[hazard_id] = is_close
+	
+func _show_near_miss() -> void:
+	if is_game_over:
+		return
+
+	current_near_misses += 1
+
+	if near_miss_tween != null:
+		near_miss_tween.kill()
+
+	near_miss_label.visible = true
+	near_miss_label.text = "NEAR MISS"
+	near_miss_label.pivot_offset = (
+		near_miss_label.size * 0.5
+	)
+
+	near_miss_label.scale = Vector2(
+		1.35,
+		1.35
+	)
+
+	near_miss_label.modulate = Color(
+		0.21,
+		0.95,
+		0.91,
+		1.0
+	)
+
+	burst_particles.create_burst(
+		player.position,
+		Color("#35F2E8"),
+		8,
+		35.0,
+		90.0,
+		0.24
+	)
+
+	near_miss_tween = create_tween()
+
+	near_miss_tween.tween_property(
+		near_miss_label,
+		"scale",
+		Vector2.ONE,
+		0.16
+	).set_trans(
+		Tween.TRANS_BACK
+	).set_ease(
+		Tween.EASE_OUT
+	)
+
+	near_miss_tween.tween_interval(0.35)
+
+	near_miss_tween.tween_property(
+		near_miss_label,
+		"modulate:a",
+		0.0,
+		0.22
+	)
+
+	near_miss_tween.tween_callback(
+		func() -> void:
+			near_miss_label.visible = false
 	)
