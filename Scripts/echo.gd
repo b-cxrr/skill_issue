@@ -1,7 +1,7 @@
 class_name OrbitEcho
 extends Area2D
 
-signal player_hit
+signal player_hit(hazard: Node2D)
 
 @export var warning_lead_time: float = 0.32
 @export var warning_radius_difference: float = 18.0
@@ -21,11 +21,32 @@ var lane_switch_warning: bool = false
 func setup(
 	path: PackedFloat32Array,
 	speed: float,
-	phase_offset: float
+	phase_offset: float,
+	speed_multiplier: float,
+	warning_time: float,
+	collision_radius: float
 ) -> void:
 	recorded_path = path.duplicate()
-	angular_speed = absf(speed) * 0.85
+
+	angular_speed = (
+		absf(speed) * speed_multiplier
+	)
+
+	warning_lead_time = warning_time
 	travelled_angle = phase_offset
+
+	var collision_shape: CollisionShape2D = (
+		$CollisionShape2D
+	)
+
+	var circle_shape: CircleShape2D = (
+		collision_shape.shape.duplicate()
+		as CircleShape2D
+	)
+
+	if circle_shape != null:
+		circle_shape.radius = collision_radius
+		collision_shape.shape = circle_shape
 
 	_update_echo_position()
 
@@ -236,4 +257,4 @@ func _draw() -> void:
 
 func _on_area_entered(area: Area2D) -> void:
 	if area is OrbitPlayer:
-		player_hit.emit()
+		player_hit.emit(self)

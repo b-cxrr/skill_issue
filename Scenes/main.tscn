@@ -129,6 +129,17 @@ theme_override_font_sizes/font_size = 20
 text = "TAP TO BEGIN"
 horizontal_alignment = 1
 
+[node name="GameOverOverlay" type="ColorRect" parent="UI" unique_id=945866359]
+unique_name_in_owner = true
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0, 0, 0, 0.78431374)
+
 [node name="GameOverCenter" type="CenterContainer" parent="UI" unique_id=2092668923]
 unique_name_in_owner = true
 visible = false
