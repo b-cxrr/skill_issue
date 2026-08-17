@@ -1,6 +1,7 @@
 extends Node2D
 
-
+@onready var points_label: Label = %PointsLabel
+@onready var risk_label: Label = %RiskLabel
 @onready var player: OrbitPlayer = $Player
 @onready var score_label: Label = (%ScoreLabel)
 @onready var game_over_center: CenterContainer = (%GameOverCenter)
@@ -21,6 +22,8 @@ extends Node2D
 @onready var pause_menu: SkillPauseMenu = (%PauseMenu)
 @onready var game_over_overlay: ColorRect = (%GameOverOverlay)
 @onready var stats_label: Label = (%StatsLabel)
+@onready var visual_controller: Node2D = $VisualController
+
 @export var maximum_echoes: int = 1
 @export var gate_scene: PackedScene
 @export var inner_radius: float = 150.0
@@ -32,12 +35,14 @@ var inner_glow_colour: Color = Color("#183F46")
 var echo_count: int = 0
 var is_game_over: bool = false
 var restart_allowed_at: int = 0
-var current_score: int = 0
+var current_round: int = 0
+var current_points: int = 0
 var game_started: bool = false
 var collision_flash_tween: Tween
 var collision_shake_tween: Tween
 var shift_trail_tween: Tween
 var near_miss_tween: Tween
+var risk_tween: Tween
 var hazard_close_states: Dictionary = {}
 var lap_pulse_tween: Tween
 var lap_pulse_radius: float = 0.0
@@ -47,10 +52,18 @@ var start_prompt_tween: Tween
 var game_over_tween: Tween
 var achievement_tween: Tween
 var current_near_misses: int = 0
+var risk_multiplier: float = 1.0
+var last_near_miss_time: int = 0
 
+const LAP_POINTS: int = 100
+const NEAR_MISS_POINTS: int = 50
+const RISK_MULTIPLIER_STEP: float = 0.5
+const MAX_RISK_MULTIPLIER: float = 3.0
+const RISK_TIMEOUT_MS: int = 3000
 
 func _ready() -> void:
 	
+	risk_label.visible = false
 	near_miss_label.visible = false
 	
 	player.set_gilded_skin(
@@ -70,10 +83,12 @@ func _ready() -> void:
 	game_over_center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
 	game_over_center.visible = false
-	_update_score_display()
+	_update_round_display()
+	_update_points_display()
 	
 	start_center.visible = true
 	score_label.visible = false
+	points_label.visible = false
 	_animate_start_prompt()
 
 	player.set_process(false)
@@ -94,18 +109,20 @@ func _on_player_lap_completed(
 	path: PackedFloat32Array,
 	recorded_speed: float
 ) -> void:
-	current_score += 1
-	_update_score_display()
+	current_round += 1
+	current_points += LAP_POINTS
+	visual_controller.lap_completed(current_round)
+	_update_round_display()
+	_update_points_display()
 	_check_level_10_achievement()
 	_animate_score()
-	_play_lap_pulse()
 
 	if lap_sound.stream != null:
 		lap_sound.play()
 
 	SettingsManager.vibrate(35, 0.35)
 	_generate_gates()
-	if current_score < 4:
+	if current_round < 7:
 		return
 	if echo_scene == null:
 		push_warning("No Echo scene assigned to Arena.")
@@ -186,25 +203,29 @@ func _on_hazard_hit_player(hazard: Node2D) -> void:
 
 	var got_new_best: bool = (
 		SaveManager.record_completed_run(
-			current_score,
+			current_round,
 			current_near_misses
 		)
 	)
 
 	final_score_label.text = (
-		"SCORE %03d" % current_score
+		"ROUND %d\nPOINTS %d"
+		% [
+			current_round,
+			current_points
+		]
 	)
 
 	best_score_label.text = (
-		"BEST %03d" % SaveManager.best_score
+		"BEST %d" % SaveManager.best_score
 	)
 
 	if got_new_best:
 		best_score_label.text += "  NEW"
 
 	stats_label.text = (
-		"NEAR MISSES %03d  |  TOTAL %03d\n"
-		+ "RUNS %03d  |  LAPS %03d"
+		"NEAR MISSES %d  |  TOTAL %d\n"
+		+ "RUNS %d  |  LAPS %d"
 	) % [
 		current_near_misses,
 		SaveManager.total_near_misses,
@@ -214,6 +235,8 @@ func _on_hazard_hit_player(hazard: Node2D) -> void:
 
 	_show_game_over()
 	score_label.visible = false
+	points_label.visible = false
+	risk_label.visible = false
 
 	player.set_process(false)
 	player.set_process_unhandled_input(false)
@@ -264,8 +287,12 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	get_tree().reload_current_scene()
 		
-func _update_score_display() -> void:
-	score_label.text = "%03d" % current_score
+func _update_round_display() -> void:
+	score_label.text = "ROUND %d" % current_round
+
+
+func _update_points_display() -> void:
+	points_label.text = "%d" % current_points
 
 func _generate_gates() -> void:
 	if gate_scene == null:
@@ -334,7 +361,7 @@ func _generate_gates() -> void:
 
 		# The tutorial gate always blocks the player's
 		# starting outer lane.
-		if current_score == 0:
+		if current_round == 0:
 			blocks_inner = false
 		else:
 			blocks_inner = (
@@ -385,6 +412,7 @@ func _start_game() -> void:
 
 	start_center.visible = false
 	score_label.visible = true
+	points_label.visible = true
 
 	# Blocks Android's emulated mouse event from the starting tap.
 	player.lock_lane_switching(200)
@@ -630,7 +658,7 @@ func _show_game_over() -> void:
 	)
 
 func _check_level_10_achievement() -> void:
-	if current_score < 10:
+	if current_round < 10:
 		return
 
 	var newly_unlocked: bool = (
@@ -715,44 +743,47 @@ func _show_achievement() -> void:
 			achievement_label.visible = false
 	)
 func _get_echo_speed_multiplier() -> float:
-	if current_score <= 7:
-		return 0.72
+	if current_round <= 10:
+		return 0.66
 
-	if current_score <= 11:
-		return 0.76
+	if current_round <= 15:
+		return 0.70
 
-	if current_score <= 15:
+	if current_round <= 20:
+		return 0.75
+
+	if current_round <= 30:
 		return 0.80
-
-	if current_score <= 19:
-		return 0.83
 
 	return 0.85
 
 
 func _get_echo_warning_time() -> float:
-	if current_score <= 7:
-		return 0.46
+	if current_round <= 10:
+		return 0.52
 
-	if current_score <= 11:
+	if current_round <= 15:
+		return 0.47
+
+	if current_round <= 20:
 		return 0.42
-
-	if current_score <= 15:
+	if current_round <= 30:
 		return 0.38
-
 	return 0.34
 
 
 func _get_echo_collision_radius() -> float:
-	if current_score <= 7:
+	if current_round <= 10:
+		return 9
+
+	if current_round <= 15:
 		return 9.5
 
-	if current_score <= 11:
+	if current_round <= 20:
 		return 10.5
-
-	if current_score <= 15:
+	if current_round <= 30:
 		return 11.5
-
+		
 	return 12.0
 
 func _highlight_hazard(
@@ -877,25 +908,27 @@ func _update_skin_button() -> void:
 			+ "TAP TO CHANGE"
 		)
 func _get_gate_total() -> int:
-	if current_score >= 22:
+	if current_round >= 32:
 		return 5
 
-	if current_score >= 14:
+	if current_round >= 22:
 		return 4
 
-	if current_score >= 8:
+	if current_round >= 12:
 		return 3
 
-	if current_score >= 2:
+	if current_round >= 5:
 		return 2
 
 	return 1
+
 func _process(_delta: float) -> void:
 	if not game_started or is_game_over:
 		return
 
 	_check_gate_near_misses()
 	_check_echo_near_misses()
+	_update_risk_multiplier()
 	
 func _check_gate_near_misses() -> void:
 	for child: Node in gates_container.get_children():
@@ -979,11 +1012,34 @@ func _show_near_miss() -> void:
 
 	current_near_misses += 1
 
+	# Award points using the multiplier that was active
+	# when this near miss was achieved.
+	var bonus_points: int = roundi(
+		float(NEAR_MISS_POINTS) * risk_multiplier
+	)
+
+	current_points += bonus_points
+	_update_points_display()
+
+	last_near_miss_time = Time.get_ticks_msec()
+
+	# Increase the risk multiplier for the NEXT near miss.
+	risk_multiplier = minf(
+		risk_multiplier + RISK_MULTIPLIER_STEP,
+		MAX_RISK_MULTIPLIER
+	)
+
+	_update_risk_display()
+
 	if near_miss_tween != null:
 		near_miss_tween.kill()
 
 	near_miss_label.visible = true
-	near_miss_label.text = "NEAR MISS"
+	near_miss_label.text = (
+		"NEAR MISS!\n+%d"
+		% bonus_points
+	)
+
 	near_miss_label.pivot_offset = (
 		near_miss_label.size * 0.5
 	)
@@ -993,16 +1049,11 @@ func _show_near_miss() -> void:
 		1.35
 	)
 
-	near_miss_label.modulate = Color(
-		0.21,
-		0.95,
-		0.91,
-		1.0
-	)
+	near_miss_label.modulate = _get_risk_colour()
 
 	burst_particles.create_burst(
 		player.position,
-		Color("#35F2E8"),
+		_get_risk_colour(),
 		8,
 		35.0,
 		90.0,
@@ -1035,3 +1086,68 @@ func _show_near_miss() -> void:
 		func() -> void:
 			near_miss_label.visible = false
 	)
+
+
+func _update_risk_display() -> void:
+	if risk_multiplier <= 1.0:
+		risk_label.visible = false
+		return
+
+	risk_label.visible = true
+	risk_label.text = (
+		"RISK x%.1f"
+		% risk_multiplier
+	)
+
+	risk_label.modulate = _get_risk_colour()
+
+	risk_label.pivot_offset = (
+		risk_label.size * 0.5
+	)
+
+	risk_label.scale = Vector2(
+		1.25,
+		1.25
+	)
+
+	if risk_tween != null:
+		risk_tween.kill()
+
+	risk_tween = create_tween()
+
+	risk_tween.tween_property(
+		risk_label,
+		"scale",
+		Vector2.ONE,
+		0.18
+	).set_trans(
+		Tween.TRANS_BACK
+	).set_ease(
+		Tween.EASE_OUT
+	)
+
+
+func _get_risk_colour() -> Color:
+	if risk_multiplier >= 3.0:
+		return Color("#FF315F")
+
+	if risk_multiplier >= 2.5:
+		return Color("#FFD54A")
+
+	if risk_multiplier >= 2.0:
+		return Color("#B85CFF")
+
+	return Color("#35F2E8")
+
+
+func _update_risk_multiplier() -> void:
+	if risk_multiplier <= 1.0:
+		return
+
+	var time_since_near_miss: int = (
+		Time.get_ticks_msec() - last_near_miss_time
+	)
+
+	if time_since_near_miss >= RISK_TIMEOUT_MS:
+		risk_multiplier = 1.0
+		_update_risk_display()

@@ -1,6 +1,7 @@
 class_name SkillPauseMenu
 extends Control
 
+
 @onready var pause_button: Button = (
 	$PauseButton
 )
@@ -25,6 +26,7 @@ extends Control
 	$PauseOverlay/PauseCenter/PauseVBox/RestartButton
 )
 
+
 var gameplay_available: bool = false
 
 
@@ -33,6 +35,12 @@ func _ready() -> void:
 
 	pause_overlay.visible = false
 	pause_button.visible = false
+
+	#
+	# Sound and vibration behave as ON/OFF toggle buttons.
+	#
+	sound_button.toggle_mode = true
+	vibration_button.toggle_mode = true
 
 	pause_button.pressed.connect(_pause_game)
 	resume_button.pressed.connect(_resume_game)
@@ -73,23 +81,38 @@ func _resume_game() -> void:
 func _toggle_sound() -> void:
 	SettingsManager.toggle_sound()
 	_update_setting_labels()
+	sound_button.release_focus()
 
 
 func _toggle_vibration() -> void:
 	SettingsManager.toggle_vibration()
 	_update_setting_labels()
-
+	sound_button.release_focus()
 
 func _update_setting_labels() -> void:
+	#
+	# SOUND
+	#
 	if SettingsManager.sound_enabled:
 		sound_button.text = "SOUND: ON"
+
+		sound_button.set_pressed_no_signal(true)
 	else:
 		sound_button.text = "SOUND: OFF"
 
+		sound_button.set_pressed_no_signal(false)
+
+	#
+	# VIBRATION
+	#
 	if SettingsManager.vibration_enabled:
 		vibration_button.text = "VIBRATION: ON"
+
+		vibration_button.set_pressed_no_signal(true)
 	else:
 		vibration_button.text = "VIBRATION: OFF"
+
+		vibration_button.set_pressed_no_signal(false)
 
 
 func _restart_game() -> void:

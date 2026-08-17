@@ -9,7 +9,13 @@
 [ext_resource type="AudioStream" uid="uid://b2yebn20s6o6w" path="res://SoundFX/Digital_Lap_01.wav" id="7_344ge"]
 [ext_resource type="AudioStream" uid="uid://drio67j51swjy" path="res://SoundFX/Digital_Impact_01.wav" id="8_344ge"]
 [ext_resource type="Script" uid="uid://3w1k05lyx4kq" path="res://Scripts/burst_particles.gd" id="9_ynf5e"]
+[ext_resource type="Script" uid="uid://colfq1t52h1hj" path="res://Scripts/visual_controller.gd" id="10_6iyac"]
 [ext_resource type="Script" uid="uid://476smejix5k1" path="res://Scripts/Pause_Menu.gd" id="10_hptm8"]
+[ext_resource type="PackedScene" uid="uid://cxuxdn2fsl3yr" path="res://Visual/lapshockwave.tscn" id="11_fdnlq"]
+[ext_resource type="Script" uid="uid://dngn11qryn7so" path="res://Scripts/geometry_field.gd" id="12_fdnlq"]
+[ext_resource type="StyleBox" uid="uid://datd8ma0bu4aw" path="res://Scenes/UI_template.tres" id="14_k12tt"]
+[ext_resource type="StyleBox" uid="uid://n85raq3hi7lm" path="res://Scenes/UI_template_pressed.tres" id="15_h1bgf"]
+[ext_resource type="StyleBox" uid="uid://ecarub2bsmmd" path="res://Scenes/UI_template_hover.tres" id="16_b3802"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_tls2j"]
 radius = 14.0
@@ -17,6 +23,15 @@ radius = 14.0
 [sub_resource type="LabelSettings" id="LabelSettings_tls2j"]
 font_size = 22
 font_color = Color(1, 0.8352941, 0.2901961, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_7sicb"]
+bg_color = Color(0.0627451, 0.07450981, 0.12156863, 0.8509804)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.20784314, 0.9490196, 0.9098039, 0.7490196)
+corner_detail = 14
 
 [node name="Main" type="Node2D" unique_id=446037159]
 
@@ -60,6 +75,13 @@ volume_db = -2.0
 z_index = 10
 script = ExtResource("9_ynf5e")
 
+[node name="VisualController" type="Node2D" parent="Arena" unique_id=633417402]
+script = ExtResource("10_6iyac")
+shockwave_scene = ExtResource("11_fdnlq")
+
+[node name="GeometryField" type="Node2D" parent="Arena/VisualController" unique_id=389702327]
+script = ExtResource("12_fdnlq")
+
 [node name="UI" type="CanvasLayer" parent="." unique_id=680536527]
 
 [node name="AchievementLabel" type="Label" parent="UI" unique_id=1860743836]
@@ -93,22 +115,22 @@ offset_bottom = 100.0
 grow_horizontal = 2
 offset_transform_enabled = true
 theme_override_font_sizes/font_size = 42
-text = "000"
+text = "ROUND 00"
 horizontal_alignment = 1
 
-[node name="NearMissLabel" type="Label" parent="UI" unique_id=2046471556]
+[node name="PointsLabel" type="Label" parent="UI" unique_id=1196139247]
 unique_name_in_owner = true
-visible = false
 anchors_preset = -1
 anchor_left = 0.5
+anchor_top = 0.14
 anchor_right = 0.5
-offset_left = -150.0
-offset_top = 90.0
-offset_right = 150.0
-offset_bottom = 140.0
+anchor_bottom = 0.147
+offset_left = -56.0
+offset_right = 56.0
+offset_bottom = 28.0
 grow_horizontal = 2
-theme_override_font_sizes/font_size = 22
-text = "NEAR MISS"
+theme_override_font_sizes/font_size = 28
+text = "POINTS 000"
 horizontal_alignment = 1
 
 [node name="StartCenter" type="CenterContainer" parent="UI" unique_id=950005539]
@@ -127,7 +149,7 @@ theme_override_constants/separation = 18
 [node name="TitleLabel" type="Label" parent="UI/StartCenter/StartVBox" unique_id=16644261]
 layout_mode = 2
 theme_override_font_sizes/font_size = 52
-text = "SKILL ISSUE"
+text = "SKILL \\|/ ISSUE"
 horizontal_alignment = 1
 
 [node name="InstructionLabel" type="Label" parent="UI/StartCenter/StartVBox" unique_id=1861757820]
@@ -179,7 +201,7 @@ theme_override_constants/separation = 14
 [node name="GameOverLabel" type="Label" parent="UI/GameOverCenter/GameOverVBox" unique_id=1858976505]
 layout_mode = 2
 theme_override_font_sizes/font_size = 48
-text = "SKILL ISSUE"
+text = "SKILL \\|/ ISSUE"
 horizontal_alignment = 1
 
 [node name="FinalScoreLabel" type="Label" parent="UI/GameOverCenter/GameOverVBox" unique_id=1239577956]
@@ -231,7 +253,7 @@ mouse_filter = 2
 script = ExtResource("10_hptm8")
 
 [node name="PauseButton" type="Button" parent="UI/PauseMenu" unique_id=601148058]
-custom_minimum_size = Vector2(64, 64)
+custom_minimum_size = Vector2(70, 70)
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 1.0
@@ -241,6 +263,8 @@ offset_top = 20.0
 offset_right = -20.0
 offset_bottom = 84.0
 grow_horizontal = 0
+theme_override_colors/font_color = Color(0.20784314, 0.9490196, 0.9098039, 1)
+theme_override_styles/normal = SubResource("StyleBoxFlat_7sicb")
 text = "II"
 
 [node name="PauseOverlay" type="ColorRect" parent="UI/PauseMenu" unique_id=2085571337]
@@ -275,17 +299,74 @@ horizontal_alignment = 1
 [node name="ResumeButton" type="Button" parent="UI/PauseMenu/PauseOverlay/PauseCenter/PauseVBox" unique_id=1961315028]
 custom_minimum_size = Vector2(0, 56)
 layout_mode = 2
+theme_override_colors/font_color = Color(0.95686275, 1, 1, 1)
+theme_override_colors/font_hover_color = Color(0.20784314, 0.9490196, 0.9098039, 1)
+theme_override_styles/normal = ExtResource("14_k12tt")
+theme_override_styles/pressed = ExtResource("15_h1bgf")
+theme_override_styles/hover = ExtResource("16_b3802")
 text = "RESUME"
 
 [node name="SoundButton" type="Button" parent="UI/PauseMenu/PauseOverlay/PauseCenter/PauseVBox" unique_id=531149448]
 custom_minimum_size = Vector2(0, 56)
 layout_mode = 2
+theme_override_colors/font_color = Color(0.95686275, 1, 1, 1)
+theme_override_colors/font_pressed_color = Color(0.20784314, 0.9490196, 0.9098039, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
+theme_override_colors/font_hover_pressed_color = Color(0.20784314, 0.9490196, 0.9098039, 1)
+theme_override_styles/normal = ExtResource("14_k12tt")
+theme_override_styles/pressed = ExtResource("15_h1bgf")
+theme_override_styles/hover = ExtResource("14_k12tt")
+theme_override_styles/hover_pressed = ExtResource("15_h1bgf")
+toggle_mode = true
 
 [node name="VibrationButton" type="Button" parent="UI/PauseMenu/PauseOverlay/PauseCenter/PauseVBox" unique_id=360785759]
 custom_minimum_size = Vector2(0, 56)
 layout_mode = 2
+theme_override_colors/font_color = Color(0.95686275, 1, 1, 1)
+theme_override_colors/font_pressed_color = Color(0.20784314, 0.9490196, 0.9098039, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
+theme_override_colors/font_hover_pressed_color = Color(0.20784314, 0.9490196, 0.9098039, 1)
+theme_override_styles/normal = ExtResource("14_k12tt")
+theme_override_styles/pressed = ExtResource("15_h1bgf")
+theme_override_styles/hover = ExtResource("14_k12tt")
+theme_override_styles/hover_pressed = ExtResource("15_h1bgf")
+toggle_mode = true
 
 [node name="RestartButton" type="Button" parent="UI/PauseMenu/PauseOverlay/PauseCenter/PauseVBox" unique_id=785447847]
 custom_minimum_size = Vector2(0, 56)
 layout_mode = 2
+theme_override_colors/font_color = Color(0.95686275, 1, 1, 1)
+theme_override_colors/font_hover_color = Color(0.20784314, 0.9490196, 0.9098039, 1)
+theme_override_styles/normal = ExtResource("14_k12tt")
+theme_override_styles/pressed = ExtResource("15_h1bgf")
+theme_override_styles/hover = ExtResource("16_b3802")
 text = "RESTART"
+
+[node name="ArenaFeedback" type="CenterContainer" parent="UI" unique_id=894630291]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="FeedbackVBox" type="VBoxContainer" parent="UI/ArenaFeedback" unique_id=2021650232]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 4
+alignment = 1
+
+[node name="RiskLabel" type="Label" parent="UI/ArenaFeedback/FeedbackVBox" unique_id=1796250671]
+unique_name_in_owner = true
+layout_mode = 2
+text = "RISK x1"
+horizontal_alignment = 1
+
+[node name="NearMissLabel" type="Label" parent="UI/ArenaFeedback/FeedbackVBox" unique_id=2046471556]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "NEAR MISS"
+horizontal_alignment = 1
+vertical_alignment = 1
