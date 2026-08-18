@@ -263,13 +263,15 @@ It has also helped move me from simply following programming examples toward bei
 
 ## Screenshots
 
-*Screenshots / gameplay GIFs will be added here.*
 
-```text
-docs/screenshots/gameplay.png
-docs/screenshots/echo_system.png
-docs/screenshots/game_over.png
-```
+
+## Title Screen
+
+![SKILL//ISSUE title screen](docs/screenshots/skill_issue_title_screen.png)
+
+## End of Run
+
+![SKILL//ISSUE end-of-run screen](docs/screenshots/skill_issue_EOR.png)
 
 ---
 
