@@ -1,3 +1,21 @@
-# Godot 4+ specific ignores
+# Godot generated files / confidential export credentials
 .godot/
+
+# Android generated build directory
 /android/
+
+# Environment / secrets
+.env
+.env.*
+
+# Android signing keys
+*.keystore
+*.jks
+
+# Other private key / certificate formats
+*.p12
+*.pem
+
+# Exported Android builds
+*.apk
+*.aab
