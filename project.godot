@@ -20,6 +20,7 @@ config/icon="uid://collygajj1x8o"
 
 SaveManager="*uid://dpnsyvs4m6fm4"
 SettingsManager="*uid://b16gaqa4sq1sg"
+LeaderboardManager="*uid://dgysy6x4xovt8"
 
 [display]
 

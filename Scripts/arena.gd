@@ -201,15 +201,30 @@ func _on_hazard_hit_player(hazard: Node2D) -> void:
 	SettingsManager.vibrate(160, 0.85)
 	restart_allowed_at = Time.get_ticks_msec() + 350
 
-	var got_new_best: bool = (
+	var run_results: Dictionary = (
 		SaveManager.record_completed_run(
 			current_round,
+			current_points,
 			current_near_misses
 		)
 	)
 
+	var got_new_best_round: bool = bool(
+		run_results.get(
+			"new_best_round",
+			false
+		)
+	)
+
+	var got_new_best_points: bool = bool(
+		run_results.get(
+			"new_best_points",
+			false
+		)
+	)
+
 	final_score_label.text = (
-		"ROUND %d\nPOINTS %d"
+		"ROUND %d\nSCORE %d"
 		% [
 			current_round,
 			current_points
@@ -217,11 +232,30 @@ func _on_hazard_hit_player(hazard: Node2D) -> void:
 	)
 
 	best_score_label.text = (
-		"BEST %d" % SaveManager.best_score
+		"BEST SCORE %d\nHIGHEST ROUND %d"
+		% [
+			SaveManager.best_points,
+			SaveManager.best_round
+		]
 	)
 
-	if got_new_best:
-		best_score_label.text += "  NEW"
+	if (
+		got_new_best_points
+		and got_new_best_round
+	):
+		best_score_label.text += (
+			"\nNEW SCORE + ROUND RECORD"
+		)
+
+	elif got_new_best_points:
+		best_score_label.text += (
+			"\nNEW HIGH SCORE"
+		)
+
+	elif got_new_best_round:
+		best_score_label.text += (
+			"\nNEW BEST ROUND"
+		)
 
 	stats_label.text = (
 		"NEAR MISSES %d  |  TOTAL %d\n"
@@ -292,7 +326,7 @@ func _update_round_display() -> void:
 
 
 func _update_points_display() -> void:
-	points_label.text = "%d" % current_points
+	points_label.text = "SCORE: %d" % current_points
 
 func _generate_gates() -> void:
 	if gate_scene == null:
@@ -335,10 +369,8 @@ func _generate_gates() -> void:
 		spacing * 0.5 - preferred_safe_angle
 	)
 
-	var rotation_limit: float = minf(
-		0.18,
-		available_rotation
-	)
+	var rotation_limit: float = available_rotation
+	
 
 	var pattern_rotation: float = randf_range(
 		-rotation_limit,
@@ -889,7 +921,7 @@ func _update_skin_button() -> void:
 	if not SaveManager.level_10_skin_unlocked:
 		skin_button.text = (
 			"SKIN: DEFAULT\n"
-			+ "GILDED UNLOCKS AT 010"
+			+ "GILDED UNLOCKS AT 10"
 		)
 
 		skin_button.disabled = true

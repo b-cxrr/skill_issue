@@ -1,11 +1,15 @@
 extends Node
 
+
 const SAVE_PATH: String = "user://core_shift_save.dat"
 
 const DEFAULT_SKIN: String = "default"
 const GILDED_SKIN: String = "gilded"
 
-var best_score: int = 0
+
+var best_points: int = 0
+var best_round: int = 0
+
 var level_10_skin_unlocked: bool = false
 var selected_skin: String = DEFAULT_SKIN
 
@@ -18,34 +22,52 @@ func _ready() -> void:
 	load_data()
 
 
-func submit_score(score: int) -> bool:
-	if score <= best_score:
+func submit_points(points: int) -> bool:
+	if points <= best_points:
 		return false
 
-	best_score = score
+	best_points = points
 	save_data()
 
 	return true
 
 
+# Compatibility helper.
+# From this version onward, "score" means points.
+func submit_score(score: int) -> bool:
+	return submit_points(score)
+
+
 func record_completed_run(
-	score: int,
+	round_reached: int,
+	points_earned: int,
 	near_misses: int
-) -> bool:
+) -> Dictionary:
+
 	total_runs += 1
-	total_laps += score
+	total_laps += round_reached
 	total_near_misses += near_misses
 
-	var got_new_best: bool = (
-		score > best_score
+	var got_new_best_round: bool = (
+		round_reached > best_round
 	)
 
-	if got_new_best:
-		best_score = score
+	var got_new_best_points: bool = (
+		points_earned > best_points
+	)
+
+	if got_new_best_round:
+		best_round = round_reached
+
+	if got_new_best_points:
+		best_points = points_earned
 
 	save_data()
 
-	return got_new_best
+	return {
+		"new_best_round": got_new_best_round,
+		"new_best_points": got_new_best_points
+	}
 
 
 func select_skin(skin_name: String) -> bool:
@@ -91,7 +113,8 @@ func save_data() -> void:
 		return
 
 	file.store_var({
-		"best_score": best_score,
+		"best_points": best_points,
+		"best_round": best_round,
 		"level_10_skin_unlocked": level_10_skin_unlocked,
 		"selected_skin": selected_skin,
 		"total_runs": total_runs,
@@ -119,45 +142,91 @@ func load_data() -> void:
 		push_warning("Save data is invalid.")
 		return
 
-	best_score = int(
-		data.get("best_score", 0)
+	var save_dictionary: Dictionary = (
+		data as Dictionary
 	)
 
+	var migrated_old_save: bool = false
+
+
+	# New save format.
+	if save_dictionary.has("best_round"):
+		best_round = int(
+			save_dictionary.get(
+				"best_round",
+				0
+			)
+		)
+
+	else:
+		# Old saves used best_score to represent
+		# the highest round reached.
+		best_round = int(
+			save_dictionary.get(
+				"best_score",
+				0
+			)
+		)
+
+		migrated_old_save = true
+
+
+	# Old saves never had a points-based score.
+	best_points = int(
+		save_dictionary.get(
+			"best_points",
+			0
+		)
+	)
+
+
 	level_10_skin_unlocked = bool(
-		data.get(
+		save_dictionary.get(
 			"level_10_skin_unlocked",
 			false
 		)
 	)
 
+
 	total_runs = int(
-		data.get("total_runs", 0)
+		save_dictionary.get(
+			"total_runs",
+			0
+		)
 	)
+
 
 	total_laps = int(
-		data.get("total_laps", 0)
+		save_dictionary.get(
+			"total_laps",
+			0
+		)
 	)
 
+
 	total_near_misses = int(
-		data.get(
+		save_dictionary.get(
 			"total_near_misses",
 			0
 		)
 	)
 
-	# Existing v1.0.1 saves do not contain selected_skin.
-	# Players who already unlocked Gilded Core retain it.
+
+	# Older saves may not contain selected_skin.
+	# If Gilded was already unlocked, preserve it.
 	var fallback_skin: String = DEFAULT_SKIN
 
 	if level_10_skin_unlocked:
 		fallback_skin = GILDED_SKIN
 
+
 	selected_skin = str(
-		data.get(
+		save_dictionary.get(
 			"selected_skin",
 			fallback_skin
 		)
 	)
+
 
 	# Repair unknown skin values.
 	if (
@@ -166,9 +235,16 @@ func load_data() -> void:
 	):
 		selected_skin = DEFAULT_SKIN
 
-	# Prevent a locked skin from remaining selected.
+
+	# Prevent a locked skin from being selected.
 	if (
 		selected_skin == GILDED_SKIN
 		and not level_10_skin_unlocked
 	):
 		selected_skin = DEFAULT_SKIN
+
+
+	# Convert old saves to the new format
+	# after they have loaded successfully.
+	if migrated_old_save:
+		save_data()

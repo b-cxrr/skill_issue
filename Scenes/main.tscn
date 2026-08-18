@@ -130,7 +130,7 @@ offset_right = 56.0
 offset_bottom = 28.0
 grow_horizontal = 2
 theme_override_font_sizes/font_size = 28
-text = "POINTS 000"
+text = "SCORE 000"
 horizontal_alignment = 1
 
 [node name="StartCenter" type="CenterContainer" parent="UI" unique_id=950005539]
@@ -196,37 +196,77 @@ mouse_filter = 2
 [node name="GameOverVBox" type="VBoxContainer" parent="UI/GameOverCenter" unique_id=1978647894]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_constants/separation = 14
+theme_override_constants/separation = 5
 
-[node name="GameOverLabel" type="Label" parent="UI/GameOverCenter/GameOverVBox" unique_id=1858976505]
+[node name="GameOverTitleLabel" type="Label" parent="UI/GameOverCenter/GameOverVBox" unique_id=1858976505]
 layout_mode = 2
 theme_override_font_sizes/font_size = 48
 text = "SKILL \\|/ ISSUE"
 horizontal_alignment = 1
 
-[node name="FinalScoreLabel" type="Label" parent="UI/GameOverCenter/GameOverVBox" unique_id=1239577956]
+[node name="SpacerTop" type="Control" parent="UI/GameOverCenter/GameOverVBox" unique_id=1841468576]
+custom_minimum_size = Vector2(0, 55)
+layout_mode = 2
+
+[node name="ResultVBox" type="VBoxContainer" parent="UI/GameOverCenter/GameOverVBox" unique_id=1262142771]
+layout_mode = 2
+
+[node name="FinalScoreLabel" type="Label" parent="UI/GameOverCenter/GameOverVBox/ResultVBox" unique_id=1239577956]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 30
 text = "SCORE 000"
 horizontal_alignment = 1
 
-[node name="BestScoreLabel" type="Label" parent="UI/GameOverCenter/GameOverVBox" unique_id=1978137469]
+[node name="RoundLabel" type="Label" parent="UI/GameOverCenter/GameOverVBox/ResultVBox" unique_id=896939599]
+layout_mode = 2
+
+[node name="SpacerMiddle" type="Control" parent="UI/GameOverCenter/GameOverVBox" unique_id=368465758]
+custom_minimum_size = Vector2(0, 30)
+layout_mode = 2
+
+[node name="BestVBox" type="VBoxContainer" parent="UI/GameOverCenter/GameOverVBox" unique_id=407397397]
+layout_mode = 2
+
+[node name="BestScoreLabel" type="Label" parent="UI/GameOverCenter/GameOverVBox/BestVBox" unique_id=1978137469]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "BEST 000"
 horizontal_alignment = 1
 
+[node name="BestRoundLabel" type="Label" parent="UI/GameOverCenter/GameOverVBox/BestVBox" unique_id=394943227]
+layout_mode = 2
+
 [node name="StatsLabel" type="Label" parent="UI/GameOverCenter/GameOverVBox" unique_id=1756527607]
 unique_name_in_owner = true
+visible = false
 layout_mode = 2
 text = "NEAR MISSES: 000"
 horizontal_alignment = 1
 
-[node name="RestartLabel" type="Label" parent="UI/GameOverCenter/GameOverVBox" unique_id=555686696]
+[node name="SpacerBottom" type="Control" parent="UI/GameOverCenter/GameOverVBox" unique_id=8805070]
+custom_minimum_size = Vector2(0, 25)
 layout_mode = 2
-theme_override_font_sizes/font_size = 20
+
+[node name="ActionVBox" type="VBoxContainer" parent="UI/GameOverCenter/GameOverVBox" unique_id=1213272894]
+layout_mode = 2
+
+[node name="LeaderboardsButton" type="Button" parent="UI/GameOverCenter/GameOverVBox/ActionVBox" unique_id=84070848]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+theme_override_constants/h_separation = 5
+theme_override_font_sizes/font_size = 25
+theme_override_styles/normal = ExtResource("14_k12tt")
+theme_override_styles/pressed = ExtResource("15_h1bgf")
+theme_override_styles/hover = ExtResource("16_b3802")
+theme_override_styles/hover_pressed = ExtResource("16_b3802")
+text = "LEADERBOARDS"
+
+[node name="RestartLabel" type="Label" parent="UI/GameOverCenter/GameOverVBox/ActionVBox" unique_id=555686696]
+layout_mode = 2
+theme_override_font_sizes/font_size = 25
 text = "TAP TO RESTART"
 horizontal_alignment = 1
 
@@ -359,6 +399,7 @@ alignment = 1
 [node name="RiskLabel" type="Label" parent="UI/ArenaFeedback/FeedbackVBox" unique_id=1796250671]
 unique_name_in_owner = true
 layout_mode = 2
+theme_override_font_sizes/font_size = 30
 text = "RISK x1"
 horizontal_alignment = 1
 
