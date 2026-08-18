@@ -18,6 +18,7 @@ extends Node2D
 @onready var achievement_label: Label = (%AchievementLabel)
 @onready var skin_button: Button = (%SkinButton)
 @onready var game_over_vbox: VBoxContainer = (%GameOverVBox)
+@onready var leaderboards_button: Button = %LeaderboardsButton
 @onready var near_miss_label: Label = (%NearMissLabel)
 @onready var pause_menu: SkillPauseMenu = (%PauseMenu)
 @onready var game_over_overlay: ColorRect = (%GameOverOverlay)
@@ -73,6 +74,11 @@ func _ready() -> void:
 	achievement_label.visible = false
 	
 	skin_button.pressed.connect(_on_skin_button_pressed)
+
+	leaderboards_button.pressed.connect(
+		_on_leaderboards_button_pressed
+	)
+
 	_update_skin_button()
 	pause_menu.call_deferred("set_gameplay_available",false)
 	
@@ -208,6 +214,8 @@ func _on_hazard_hit_player(hazard: Node2D) -> void:
 			current_near_misses
 		)
 	)
+
+	LeaderboardManager.sync_saved_records()
 
 	var got_new_best_round: bool = bool(
 		run_results.get(
@@ -893,6 +901,10 @@ func _highlight_hazard(
 	highlight_tween.tween_callback(
 		impact_ring.queue_free
 	)
+func _on_leaderboards_button_pressed() -> void:
+	LeaderboardManager.show_all_leaderboards()
+
+
 func _on_skin_button_pressed() -> void:
 	if not SaveManager.level_10_skin_unlocked:
 		return

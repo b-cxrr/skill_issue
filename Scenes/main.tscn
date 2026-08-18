@@ -16,6 +16,7 @@
 [ext_resource type="StyleBox" uid="uid://datd8ma0bu4aw" path="res://Scenes/UI_template.tres" id="14_k12tt"]
 [ext_resource type="StyleBox" uid="uid://n85raq3hi7lm" path="res://Scenes/UI_template_pressed.tres" id="15_h1bgf"]
 [ext_resource type="StyleBox" uid="uid://ecarub2bsmmd" path="res://Scenes/UI_template_hover.tres" id="16_b3802"]
+[ext_resource type="Texture2D" uid="uid://blj5eoxmbwd0c" path="res://Sprites/Icons/games_controller_white.png" id="16_h1bgf"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_tls2j"]
 radius = 14.0
@@ -263,6 +264,8 @@ theme_override_styles/pressed = ExtResource("15_h1bgf")
 theme_override_styles/hover = ExtResource("16_b3802")
 theme_override_styles/hover_pressed = ExtResource("16_b3802")
 text = "LEADERBOARDS"
+icon = ExtResource("16_h1bgf")
+expand_icon = true
 
 [node name="RestartLabel" type="Label" parent="UI/GameOverCenter/GameOverVBox/ActionVBox" unique_id=555686696]
 layout_mode = 2
