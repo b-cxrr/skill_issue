@@ -81,9 +81,8 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 
-func _sample_recorded_radius(
-	cycle_angle: float
-) -> float:
+func _sample_recorded_radius(cycle_angle: float) -> float:
+	
 	if recorded_path.size() < 2:
 		return 0.0
 
@@ -122,7 +121,42 @@ func _sample_recorded_radius(
 		recorded_path[upper_index],
 		interpolation_weight
 	)
+func get_predicted_position(
+	seconds_ahead: float
+) -> Vector2:
+	if recorded_path.size() < 2:
+		return position
 
+	var prediction_time: float = maxf(
+		seconds_ahead,
+		0.0
+	)
+
+	var predicted_travelled_angle: float = (
+		travelled_angle
+		+ angular_speed * prediction_time
+	)
+
+	var predicted_cycle_angle: float = fposmod(
+		predicted_travelled_angle,
+		TAU
+	)
+
+	var predicted_radius: float = (
+		_sample_recorded_radius(
+			predicted_cycle_angle
+		)
+	)
+
+	var predicted_angle: float = (
+		starting_angle
+		- predicted_cycle_angle
+	)
+
+	return (
+		Vector2.from_angle(predicted_angle)
+		* predicted_radius
+	)
 
 func _update_echo_position() -> void:
 	if recorded_path.size() < 2:

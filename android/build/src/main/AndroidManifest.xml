@@ -16,23 +16,19 @@
         android:required="true" />
 
     <application
-    android:label="@string/godot_project_name_string"
-    android:allowBackup="false"
-    android:icon="@mipmap/icon"
-    android:appCategory="game"
-    android:isGame="true"
-    android:hasFragileUserData="false"
-    android:requestLegacyExternalStorage="false"
-    tools:ignore="GoogleAppIndexingWarning" >
+        android:label="@string/godot_project_name_string"
+        android:allowBackup="false"
+        android:icon="@mipmap/icon"
+        android:appCategory="game"
+        android:isGame="true"
+        android:hasFragileUserData="false"
+        android:requestLegacyExternalStorage="false"
+        tools:ignore="GoogleAppIndexingWarning" >
+        <profileable
+            android:shell="true"
+            android:enabled="true"
+            tools:targetApi="29" />
 
-    <meta-data
-        android:name="com.google.android.gms.games.APP_ID"
-        android:value="@string/game_services_project_id" />
-
-    <profileable
-        android:shell="true"
-        android:enabled="true"
-        tools:targetApi="29" />
         <activity
             android:name=".GodotApp"
             android:theme="@style/GodotAppSplashTheme"

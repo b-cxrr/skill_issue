@@ -5,6 +5,7 @@
 [ext_resource type="Script" uid="uid://bhguyx6o42nx" path="res://Scripts/orbit_player.gd" id="2_8gbba"]
 [ext_resource type="PackedScene" uid="uid://ppaaikd64882" path="res://Scenes/echo.tscn" id="3_jjvhh"]
 [ext_resource type="PackedScene" uid="uid://cidot5v5fvf8s" path="res://Scenes/phase_gate.tscn" id="3_kry3j"]
+[ext_resource type="PackedScene" uid="uid://hbr5aeceyw0h" path="res://Scenes/power_up.tscn" id="5_b3802"]
 [ext_resource type="AudioStream" uid="uid://cktcqh4wp6i3n" path="res://SoundFX/Digital_Switch_01.wav" id="6_344ge"]
 [ext_resource type="AudioStream" uid="uid://b2yebn20s6o6w" path="res://SoundFX/Digital_Lap_01.wav" id="7_344ge"]
 [ext_resource type="AudioStream" uid="uid://drio67j51swjy" path="res://SoundFX/Digital_Impact_01.wav" id="8_344ge"]
@@ -44,6 +45,7 @@ script = ExtResource("1_344ge")
 script = ExtResource("1_bo1nx")
 gate_scene = ExtResource("3_kry3j")
 echo_scene = ExtResource("3_jjvhh")
+power_up_scene = ExtResource("5_b3802")
 
 [node name="Player" type="Area2D" parent="Arena" unique_id=569246917]
 script = ExtResource("2_8gbba")
@@ -56,6 +58,8 @@ stream = ExtResource("6_344ge")
 volume_db = -5.0
 
 [node name="Gates" type="Node2D" parent="Arena" unique_id=1546041584]
+
+[node name="PowerUps" type="Node2D" parent="Arena" unique_id=1565154088]
 
 [node name="ShiftTrail" type="Line2D" parent="Arena" unique_id=1153790173]
 visible = false
@@ -414,3 +418,36 @@ theme_override_font_sizes/font_size = 22
 text = "NEAR MISS"
 horizontal_alignment = 1
 vertical_alignment = 1
+
+[node name="PowerUpHUD" type="Control" parent="UI" unique_id=87999589]
+unique_name_in_owner = true
+visible = false
+layout_mode = 3
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -120.0
+offset_top = 215.0
+offset_right = 120.0
+offset_bottom = 265.0
+mouse_filter = 2
+
+[node name="PowerUpNameLabel" type="Label" parent="UI/PowerUpHUD" unique_id=660739578]
+unique_name_in_owner = true
+layout_mode = 0
+offset_right = 240.0
+offset_bottom = 28.0
+theme_override_font_sizes/font_size = 17
+horizontal_alignment = 1
+
+[node name="PowerUpTimerBack" type="ColorRect" parent="UI/PowerUpHUD" unique_id=2139933407]
+layout_mode = 0
+offset_top = 34.0
+offset_right = 240.0
+offset_bottom = 41.0
+
+[node name="PowerUpTimerFill" type="ColorRect" parent="UI/PowerUpHUD/PowerUpTimerBack" unique_id=1540209958]
+unique_name_in_owner = true
+layout_mode = 0
+offset_right = 240.0
+offset_bottom = 7.0
+color = Color(0.6901961, 0.42352942, 1, 1)

@@ -24,12 +24,23 @@ extends Node2D
 @onready var game_over_overlay: ColorRect = (%GameOverOverlay)
 @onready var stats_label: Label = (%StatsLabel)
 @onready var visual_controller: Node2D = $VisualController
+@onready var power_ups_container: Node2D = $PowerUps
+@onready var power_up_hud: Control = %PowerUpHUD
+@onready var power_up_name_label: Label = %PowerUpNameLabel
+@onready var power_up_timer_fill: ColorRect = %PowerUpTimerFill
+
+
 
 @export var maximum_echoes: int = 1
 @export var gate_scene: PackedScene
 @export var inner_radius: float = 150.0
 @export var outer_radius: float = 240.0
 @export var echo_scene: PackedScene
+@export var power_up_scene: PackedScene
+
+@export_category("Developer Capture")
+@export_range(0, 100, 1)
+var dev_start_round: int = 0
 
 var ring_colour: Color = Color("#303040")
 var inner_glow_colour: Color = Color("#183F46")
@@ -39,6 +50,7 @@ var restart_allowed_at: int = 0
 var current_round: int = 0
 var current_points: int = 0
 var game_started: bool = false
+var run_is_ranked: bool = true
 var collision_flash_tween: Tween
 var collision_shake_tween: Tween
 var shift_trail_tween: Tween
@@ -55,14 +67,51 @@ var achievement_tween: Tween
 var current_near_misses: int = 0
 var risk_multiplier: float = 1.0
 var last_near_miss_time: int = 0
+var echo_breaker_active: bool = false
+var gate_breaker_active: bool = false
+
+var power_up_time_remaining: float = 0.0
+var power_up_duration: float = 0.0
+
+var laps_since_power_up: int = 0
+var echoes_destroyed_this_run: int = 0
 
 const LAP_POINTS: int = 100
 const NEAR_MISS_POINTS: int = 50
 const RISK_MULTIPLIER_STEP: float = 0.5
 const MAX_RISK_MULTIPLIER: float = 3.0
 const RISK_TIMEOUT_MS: int = 3000
+# Phase Gate layout rules.
+const GATE_START_SAFE_ANGLE: float = PI / 3.0
+const GATE_MIN_SAME_LANE_SEPARATION: float = 0.40
+const GATE_MIN_OPPOSITE_LANE_SEPARATION: float = 0.50
+const GATE_LAYOUT_ATTEMPTS: int = 40
+const GATE_PLACEMENT_ATTEMPTS: int = 20
+# Echo-aware Phase Gate safety.
+const ECHO_GATE_SAFETY_DISTANCE: float = 46.0
+const ECHO_GATE_TIME_MARGIN: float = 0.15
+const ECHO_GATE_SAFETY_SAMPLES: int = 5
+
+const ECHO_DESTROY_POINTS: int = 250
+
+const POWER_UP_START_ROUND: int = 7
+const POWER_UP_SPAWN_CHANCE: float = 0.40
+const POWER_UP_MIN_LAP_GAP: int = 2
+
+const POWER_UP_START_SAFE_ANGLE: float = PI / 3.0
+const POWER_UP_GATE_SAFE_DISTANCE: float = 55.0
+const POWER_UP_ECHO_SAFE_DISTANCE: float = 70.0
+
+const ECHO_BREAKER_DURATION: float = 5.0
+const GATE_BREAKER_DURATION: float = 5.0
+
+const POWER_UP_TIMER_WIDTH: float = 240.0
+
+const ECHO_BREAKER_COLOUR: Color = Color("#B06CFF")
+const GATE_BREAKER_COLOUR: Color = Color("#FFD54A")
 
 func _ready() -> void:
+	power_up_hud.visible = false
 	
 	risk_label.visible = false
 	near_miss_label.visible = false
@@ -89,6 +138,7 @@ func _ready() -> void:
 	game_over_center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
 	game_over_center.visible = false
+	_apply_developer_capture_start()
 	_update_round_display()
 	_update_points_display()
 	
@@ -106,18 +156,46 @@ func _ready() -> void:
 	queue_redraw()
 
 
+func _apply_developer_capture_start() -> void:
+	run_is_ranked = true
+
+	# Round skipping is intentionally available only in debug builds.
+	# Leaving dev_start_round above 0 cannot affect a release build.
+	if not OS.is_debug_build():
+		return
+
+	if dev_start_round <= 0:
+		return
+
+	current_round = dev_start_round
+	current_points = dev_start_round * LAP_POINTS
+	run_is_ranked = false
+
+	# Match the late-game visual state immediately without firing a
+	# milestone shockwave before the player has actually completed a lap.
+	visual_controller.update_intensity(current_round)
+
+	print(
+		"DEV CAPTURE MODE - ROUND %d - RECORDS DISABLED"
+		% current_round
+	)
+
+
 func _centre_arena() -> void:
 	position = get_viewport_rect().size * 0.5
 
 
 func _on_player_lap_completed(
-	
 	path: PackedFloat32Array,
 	recorded_speed: float
 ) -> void:
 	current_round += 1
 	current_points += LAP_POINTS
-	visual_controller.lap_completed(current_round)
+
+	visual_controller.lap_completed(
+		current_round
+	)
+
 	_update_round_display()
 	_update_points_display()
 	_check_level_10_achievement()
@@ -126,12 +204,22 @@ func _on_player_lap_completed(
 	if lap_sound.stream != null:
 		lap_sound.play()
 
-	SettingsManager.vibrate(35, 0.35)
-	_generate_gates()
+	SettingsManager.vibrate(
+		35,
+		0.35
+	)
+
+	# Before Echoes begin, gates can be generated normally.
 	if current_round < 7:
+		_generate_gates()
 		return
+
 	if echo_scene == null:
-		push_warning("No Echo scene assigned to Arena.")
+		push_warning(
+			"No Echo scene assigned to Arena."
+		)
+		_generate_gates()
+		_try_spawn_power_up()
 		return
 
 	echo_count += 1
@@ -141,11 +229,13 @@ func _on_player_lap_completed(
 	)
 
 	if echo == null:
-		push_warning("The assigned scene is not an OrbitEcho.")
+		push_warning(
+			"The assigned scene is not an OrbitEcho."
+		)
+		_generate_gates()
+		_try_spawn_power_up()
 		return
 
-	# Each new echo begins slightly further around the circle.
-	# This prevents all echoes from permanently overlapping.
 	var phase_offset: float = (
 		float(echo_count) * 0.35
 	)
@@ -160,10 +250,17 @@ func _on_player_lap_completed(
 	)
 
 	add_child(echo)
-	
-	echo.player_hit.connect(_on_hazard_hit_player)
+
+	echo.player_hit.connect(
+		_on_hazard_hit_player
+	)
 
 	_limit_active_echoes()
+
+	# Now generate the new lap's gates while taking
+	# the active Echo into account.
+	_generate_gates(echo)
+	_try_spawn_power_up()
 
 func _draw() -> void:
 	draw_arc(Vector2.ZERO,inner_radius,0.0,TAU,128,inner_glow_colour,12.0,true)
@@ -175,11 +272,33 @@ func _draw() -> void:
 	if lap_pulse_alpha > 0.0:
 		draw_arc(Vector2.ZERO,lap_pulse_radius,0.0,TAU,128,Color(0.2,0.95,0.9,lap_pulse_alpha),7.0,true)
 
-func _on_hazard_hit_player(hazard: Node2D) -> void:
+func _on_hazard_hit_player(
+	hazard: Node2D
+) -> void:
 	if is_game_over:
 		return
 
+	if (
+		echo_breaker_active
+		and hazard is OrbitEcho
+	):
+		_destroy_echo_with_power_up(
+			hazard as OrbitEcho
+		)
+		return
+
+	if (
+		gate_breaker_active
+		and hazard is PhaseGate
+	):
+		_destroy_gate_with_power_up(
+			hazard as PhaseGate
+		)
+		return
+
 	is_game_over = true
+
+	_deactivate_power_up()
 	_highlight_hazard(hazard)
 	pause_menu.set_gameplay_available(false)
 	_play_collision_effect()
@@ -207,15 +326,20 @@ func _on_hazard_hit_player(hazard: Node2D) -> void:
 	SettingsManager.vibrate(160, 0.85)
 	restart_allowed_at = Time.get_ticks_msec() + 350
 
-	var run_results: Dictionary = (
-		SaveManager.record_completed_run(
+	var run_results: Dictionary = {}
+
+	if run_is_ranked:
+		run_results = SaveManager.record_completed_run(
 			current_round,
 			current_points,
 			current_near_misses
 		)
-	)
 
-	LeaderboardManager.sync_saved_records()
+		LeaderboardManager.sync_saved_records()
+	else:
+		print(
+			"DEV CAPTURE MODE - RUN NOT SAVED OR SUBMITTED"
+		)
 
 	var got_new_best_round: bool = bool(
 		run_results.get(
@@ -266,14 +390,17 @@ func _on_hazard_hit_player(hazard: Node2D) -> void:
 		)
 
 	stats_label.text = (
-		"NEAR MISSES %d  |  TOTAL %d\n"
-		+ "RUNS %d  |  LAPS %d"
-	) % [
-		current_near_misses,
-		SaveManager.total_near_misses,
-		SaveManager.total_runs,
-		SaveManager.total_laps
-	]
+	"NEAR MISSES %d  |  TOTAL %d\n"
+	+ "ECHOES DESTROYED %d  |  TOTAL %d\n"
+	+ "RUNS %d  |  LAPS %d"
+) % [
+	current_near_misses,
+	SaveManager.total_near_misses,
+	echoes_destroyed_this_run,
+	SaveManager.total_echoes_destroyed,
+	SaveManager.total_runs,
+	SaveManager.total_laps
+]
 
 	_show_game_over()
 	score_label.visible = false
@@ -291,6 +418,54 @@ func _on_hazard_hit_player(hazard: Node2D) -> void:
 			child.set_process(false)
 			child.set_deferred("monitoring", false)
 
+func _destroy_echo_with_power_up(
+	echo: OrbitEcho
+) -> void:
+	if not is_instance_valid(echo):
+		return
+
+	hazard_close_states.erase(
+		echo.get_instance_id()
+	)
+
+	current_points += ECHO_DESTROY_POINTS
+	echoes_destroyed_this_run += 1
+
+	if run_is_ranked:
+		SaveManager.record_echo_destroyed()
+
+	_update_points_display()
+	_animate_score()
+
+	burst_particles.create_burst(
+		echo.position,
+		ECHO_BREAKER_COLOUR,
+		30,
+		90.0,
+		240.0,
+		0.50
+	)
+
+	burst_particles.create_burst(
+		echo.position,
+		Color.WHITE,
+		12,
+		55.0,
+		160.0,
+		0.30
+	)
+
+	SettingsManager.vibrate(
+		60,
+		0.60
+	)
+
+	echo.set_deferred(
+		"monitoring",
+		false
+	)
+
+	echo.queue_free()
 
 func _unhandled_input(event: InputEvent) -> void:
 	var pressed: bool = false
@@ -336,12 +511,14 @@ func _update_round_display() -> void:
 func _update_points_display() -> void:
 	points_label.text = "SCORE: %d" % current_points
 
-func _generate_gates() -> void:
+func _generate_gates(
+	active_echo: OrbitEcho = null
+) -> void:
 	if gate_scene == null:
 		push_warning("No PhaseGate scene assigned.")
 		return
 
-# Remove the previous lap's gates.
+	# Remove the previous lap's gates.
 	for child: Node in gates_container.get_children():
 		hazard_close_states.erase(
 			child.get_instance_id()
@@ -349,64 +526,33 @@ func _generate_gates() -> void:
 
 		if child is Area2D:
 			var old_gate: Area2D = child as Area2D
-
 			old_gate.set_deferred(
 				"monitoring",
 				false
 			)
 
-			child.queue_free()
+		child.queue_free()
+
 	var gate_total: int = _get_gate_total()
 
-	# Spread gates evenly around the complete orbit.
-	var spacing: float = (
-		TAU / float(gate_total)
+	if gate_total <= 0:
+		return
+
+	var layout: Array[Dictionary] = (
+		_build_gate_layout(
+			gate_total,
+			active_echo
+		)
 	)
 
-	# Position the first gate halfway through its section.
-	var first_gate_offset: float = (
-		spacing * 0.5
-	)
-
-	# Randomly rotate the pattern while preserving
-	# a safe area around the player's lap position.
-	var preferred_safe_angle: float = 0.70
-
-	var available_rotation: float = maxf(
-		0.0,
-		spacing * 0.5 - preferred_safe_angle
-	)
-
-	var rotation_limit: float = available_rotation
-	
-
-	var pattern_rotation: float = randf_range(
-		-rotation_limit,
-		rotation_limit
-	)
-
-	# Randomise which lane is blocked first.
-	var pattern_offset: int = randi_range(0, 1)
-
-	for index: int in range(gate_total):
-		var gate_angle: float = fposmod(
-			-PI / 2.0
-			+ first_gate_offset
-			+ spacing * float(index)
-			+ pattern_rotation,
-			TAU
+	for gate_data: Dictionary in layout:
+		var gate_angle: float = float(
+			gate_data["angle"]
 		)
 
-		var blocks_inner: bool
-
-		# The tutorial gate always blocks the player's
-		# starting outer lane.
-		if current_round == 0:
-			blocks_inner = false
-		else:
-			blocks_inner = (
-				(index + pattern_offset) % 2 == 0
-			)
+		var blocks_inner: bool = bool(
+			gate_data["blocks_inner"]
+		)
 
 		var gate_radius: float
 
@@ -415,18 +561,360 @@ func _generate_gates() -> void:
 		else:
 			gate_radius = outer_radius
 
-		var gate: PhaseGate = (gate_scene.instantiate() as PhaseGate)
+		var gate: PhaseGate = (
+			gate_scene.instantiate() as PhaseGate
+		)
 
 		if gate == null:
-			push_warning("The assigned gate scene is not a PhaseGate.")
+			push_warning(
+				"The assigned gate scene is not a PhaseGate."
+			)
 			return
 
 		gates_container.add_child(gate)
 
-		gate.configure_gate(gate_angle,gate_radius,blocks_inner)
+		gate.configure_gate(
+			gate_angle,
+			gate_radius,
+			blocks_inner
+		)
 
-		gate.player_hit.connect(_on_hazard_hit_player)
+		gate.player_hit.connect(
+			_on_hazard_hit_player
+		)
+func _build_gate_layout(
+	gate_total: int,
+	active_echo: OrbitEcho = null
+) -> Array[Dictionary]:
+	for layout_attempt: int in range(
+		GATE_LAYOUT_ATTEMPTS
+	):
+		var layout: Array[Dictionary] = []
+		var layout_valid: bool = true
+
+		for index: int in range(gate_total):
+			var placement_found: bool = false
+
+			for placement_attempt: int in range(
+				GATE_PLACEMENT_ATTEMPTS
+			):
+				# Pick a genuinely random position anywhere
+				# outside the protected player-start zone.
+				var candidate_offset: float = randf_range(
+					GATE_START_SAFE_ANGLE,
+					TAU - GATE_START_SAFE_ANGLE
+				)
+
+				var candidate_angle: float = fposmod(
+					player.angle + candidate_offset,
+					TAU
+				)
+
+				var candidate_blocks_inner: bool = (
+					randi_range(0, 1) == 0
+				)
+
+				if not _is_gate_candidate_valid(
+					candidate_angle,
+					candidate_blocks_inner,
+					layout,
+					active_echo
+				):
+					continue
+
+				layout.append(
+					{
+						"angle": candidate_angle,
+						"blocks_inner":
+							candidate_blocks_inner
+					}
+				)
+
+				placement_found = true
+				break
+
+			if not placement_found:
+				layout_valid = false
+				break
+
+		# With 3+ gates, make sure both tracks
+		# actually participate in the layout.
+		if (
+			layout_valid
+			and gate_total >= 3
+			and not _layout_uses_both_lanes(layout)
+		):
+			layout_valid = false
+
+		if layout_valid:
+			return layout
+
+	return _build_safe_gate_layout(
+	gate_total,
+	active_echo
+)
 		
+		
+	
+
+
+func _is_gate_candidate_valid(
+	candidate_angle: float,
+	candidate_blocks_inner: bool,
+	existing_layout: Array[Dictionary],
+	active_echo: OrbitEcho = null
+) -> bool:
+	# Keep a clear safety zone on BOTH sides of the player's
+	# current position. This also catches gates that wrap around
+	# from the end of the circle and appear just behind the player.
+	var player_separation: float = (
+		_circular_angle_distance(
+			candidate_angle,
+			player.angle
+		)
+	)
+
+	if player_separation < GATE_START_SAFE_ANGLE:
+		return false
+
+	for gate_data: Dictionary in existing_layout:
+		var existing_angle: float = float(
+			gate_data["angle"]
+		)
+
+		var existing_blocks_inner: bool = bool(
+			gate_data["blocks_inner"]
+		)
+
+		var separation: float = (
+			_circular_angle_distance(
+				candidate_angle,
+				existing_angle
+			)
+		)
+
+		var same_lane: bool = (
+			candidate_blocks_inner
+			== existing_blocks_inner
+		)
+
+		if same_lane:
+			# Same-lane gates are allowed to sit fairly
+			# close together because the opposite lane
+			# remains completely open.
+			if (
+				separation
+				< GATE_MIN_SAME_LANE_SEPARATION
+			):
+				return false
+
+		else:
+			# Opposite-lane gates need a larger gap so
+			# they can never form a parallel double wall.
+			if (
+				separation
+				< GATE_MIN_OPPOSITE_LANE_SEPARATION
+			):
+				return false
+		if not _is_gate_echo_safe(
+		candidate_angle,
+		candidate_blocks_inner,
+		active_echo
+	):
+			return false
+	return true
+func _is_gate_echo_safe(
+	candidate_angle: float,
+	candidate_blocks_inner: bool,
+	active_echo: OrbitEcho
+) -> bool:
+	if active_echo == null:
+		return true
+
+	if not is_instance_valid(active_echo):
+		return true
+
+	# Because the Player moves clockwise, calculate how
+	# much angular distance remains before reaching the gate.
+	var forward_angle: float = fposmod(
+		candidate_angle - player.angle,
+		TAU
+	)
+
+	var player_speed: float = maxf(
+		absf(player.angular_speed),
+		0.001
+	)
+
+	var arrival_time: float = (
+		forward_angle / player_speed
+	)
+
+	# A gate blocking inner forces the player onto outer,
+	# and vice versa.
+	var required_radius: float
+
+	if candidate_blocks_inner:
+		required_radius = outer_radius
+	else:
+		required_radius = inner_radius
+
+	# Check a short window around the actual crossing.
+	# This accounts for movement and lane-switch timing,
+	# rather than testing one perfect instant.
+	for sample_index: int in range(
+		ECHO_GATE_SAFETY_SAMPLES
+	):
+		var sample_ratio: float = 0.5
+
+		if ECHO_GATE_SAFETY_SAMPLES > 1:
+			sample_ratio = (
+				float(sample_index)
+				/ float(
+					ECHO_GATE_SAFETY_SAMPLES - 1
+				)
+			)
+
+		var time_offset: float = lerpf(
+			-ECHO_GATE_TIME_MARGIN,
+			ECHO_GATE_TIME_MARGIN,
+			sample_ratio
+		)
+
+		var sample_time: float = maxf(
+			arrival_time + time_offset,
+			0.0
+		)
+
+		var player_angle_at_sample: float = fposmod(
+			player.angle
+			+ player.angular_speed * sample_time,
+			TAU
+		)
+
+		var required_player_position: Vector2 = (
+			Vector2.from_angle(
+				player_angle_at_sample
+			)
+			* required_radius
+		)
+
+		var predicted_echo_position: Vector2 = (
+			active_echo.get_predicted_position(
+				sample_time
+			)
+		)
+
+		if (
+			required_player_position.distance_to(
+				predicted_echo_position
+			)
+			< ECHO_GATE_SAFETY_DISTANCE
+		):
+			return false
+
+	return true
+
+func _layout_uses_both_lanes(
+	layout: Array[Dictionary]
+) -> bool:
+	var has_inner: bool = false
+	var has_outer: bool = false
+
+	for gate_data: Dictionary in layout:
+		if bool(gate_data["blocks_inner"]):
+			has_inner = true
+		else:
+			has_outer = true
+
+	return has_inner and has_outer
+
+
+func _build_safe_gate_layout(
+	gate_total: int,
+	active_echo: OrbitEcho = null
+) -> Array[Dictionary]:
+	var layout: Array[Dictionary] = []
+
+	var usable_arc: float = (
+		TAU
+		- GATE_START_SAFE_ANGLE * 2.0
+	)
+
+	var spacing: float = (
+		usable_arc / float(gate_total + 1)
+	)
+
+	for index: int in range(gate_total):
+		var gate_angle: float = fposmod(
+			player.angle
+			+ GATE_START_SAFE_ANGLE
+			+ spacing * float(index + 1),
+			TAU
+		)
+
+		var preferred_blocks_inner: bool = (
+			index % 2 == 0
+		)
+
+		if _is_gate_candidate_valid(
+			gate_angle,
+			preferred_blocks_inner,
+			layout,
+			active_echo
+		):
+			layout.append(
+				{
+					"angle": gate_angle,
+					"blocks_inner":
+						preferred_blocks_inner
+				}
+			)
+
+			continue
+
+		var opposite_blocks_inner: bool = (
+			not preferred_blocks_inner
+		)
+
+		if _is_gate_candidate_valid(
+			gate_angle,
+			opposite_blocks_inner,
+			layout,
+			active_echo
+		):
+			layout.append(
+				{
+					"angle": gate_angle,
+					"blocks_inner":
+						opposite_blocks_inner
+				}
+			)
+
+		# If neither lane can be made fair here,
+		# deliberately omit this gate.
+		# Fewer hazards beats an unavoidable death.
+
+	return layout
+
+
+func _circular_angle_distance(
+	first_angle: float,
+	second_angle: float
+) -> float:
+	return absf(
+		wrapf(
+			first_angle - second_angle,
+			-PI,
+			PI
+		)
+	)
+
+
+
+
+
+
 func _limit_active_echoes() -> void:
 	var active_echoes: Array[OrbitEcho] = []
 
@@ -698,6 +1186,9 @@ func _show_game_over() -> void:
 	)
 
 func _check_level_10_achievement() -> void:
+	if not run_is_ranked:
+		return
+
 	if current_round < 10:
 		return
 
@@ -966,9 +1457,11 @@ func _get_gate_total() -> int:
 
 	return 1
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if not game_started or is_game_over:
 		return
+
+	_update_power_up_timer(delta)
 
 	_check_gate_near_misses()
 	_check_echo_near_misses()
@@ -1195,3 +1688,324 @@ func _update_risk_multiplier() -> void:
 	if time_since_near_miss >= RISK_TIMEOUT_MS:
 		risk_multiplier = 1.0
 		_update_risk_display()
+func _try_spawn_power_up() -> void:
+	_clear_uncollected_power_ups()
+	
+	if echo_breaker_active or gate_breaker_active:
+		return
+	
+	if power_up_scene == null:
+		return
+
+	if current_round < POWER_UP_START_ROUND:
+		return
+
+
+	laps_since_power_up += 1
+
+	if laps_since_power_up < POWER_UP_MIN_LAP_GAP:
+		return
+
+	if randf() > POWER_UP_SPAWN_CHANCE:
+		return
+
+	var spawn_position: Vector2 = Vector2.ZERO
+	var placement_found: bool = false
+
+	for attempt: int in range(20):
+		var angle_offset: float = randf_range(
+			POWER_UP_START_SAFE_ANGLE,
+			TAU - POWER_UP_START_SAFE_ANGLE
+		)
+
+		var spawn_angle: float = fposmod(
+			player.angle + angle_offset,
+			TAU
+		)
+
+		var spawn_radius: float
+
+		if randi_range(0, 1) == 0:
+			spawn_radius = inner_radius
+		else:
+			spawn_radius = outer_radius
+
+		var candidate_position: Vector2 = (
+			Vector2.from_angle(spawn_angle)
+			* spawn_radius
+		)
+
+		if _is_power_up_position_safe(
+			candidate_position
+		):
+			spawn_position = candidate_position
+			placement_found = true
+			break
+
+	if not placement_found:
+		return
+
+	var power_up: SkillPowerUp = (
+		power_up_scene.instantiate()
+		as SkillPowerUp
+	)
+
+	if power_up == null:
+		return
+
+	if randf() < 0.5:
+		power_up.power_up_type = (
+			SkillPowerUp.PowerUpType.ECHO_BREAKER
+	)
+	else:
+		power_up.power_up_type = (
+			SkillPowerUp.PowerUpType.GATE_BREAKER
+		)
+
+	power_up.position = spawn_position
+
+	power_ups_container.add_child(power_up)
+
+	power_up.collected.connect(
+		_on_power_up_collected
+	)
+
+	laps_since_power_up = 0
+	
+func _is_power_up_position_safe(
+	candidate_position: Vector2
+) -> bool:
+	for child: Node in gates_container.get_children():
+		if not child is PhaseGate:
+			continue
+
+		var gate: PhaseGate = (
+			child as PhaseGate
+		)
+
+		if (
+			candidate_position.distance_to(
+				gate.position
+			)
+			< POWER_UP_GATE_SAFE_DISTANCE
+		):
+			return false
+
+	for child: Node in get_children():
+		if not child is OrbitEcho:
+			continue
+
+		var echo: OrbitEcho = (
+			child as OrbitEcho
+		)
+
+		if (
+			candidate_position.distance_to(
+				echo.position
+			)
+			< POWER_UP_ECHO_SAFE_DISTANCE
+		):
+			return false
+
+	return true
+	
+func _on_power_up_collected(
+	power_up: SkillPowerUp
+) -> void:
+	match power_up.power_up_type:
+		SkillPowerUp.PowerUpType.ECHO_BREAKER:
+			_activate_power_up(
+				SkillPowerUp.PowerUpType.ECHO_BREAKER
+			)
+
+		SkillPowerUp.PowerUpType.GATE_BREAKER:
+			_activate_power_up(
+				SkillPowerUp.PowerUpType.GATE_BREAKER
+			)
+
+	power_up.queue_free()
+	
+func _activate_power_up(
+	power_up_type: int
+) -> void:
+	echo_breaker_active = (
+		power_up_type
+		== SkillPowerUp.PowerUpType.ECHO_BREAKER
+	)
+
+	gate_breaker_active = (
+		power_up_type
+		== SkillPowerUp.PowerUpType.GATE_BREAKER
+	)
+
+	var power_up_colour: Color
+
+	if echo_breaker_active:
+		power_up_duration = ECHO_BREAKER_DURATION
+		power_up_colour = ECHO_BREAKER_COLOUR
+	else:
+		power_up_duration = GATE_BREAKER_DURATION
+		power_up_colour = GATE_BREAKER_COLOUR
+
+	power_up_time_remaining = power_up_duration
+
+	power_up_hud.visible = true
+
+	player.set_power_up_visual(
+		true,
+		power_up_colour
+	)
+
+	_refresh_power_up_hud()
+
+	burst_particles.create_burst(
+		player.position,
+		power_up_colour,
+		22,
+		75.0,
+		190.0,
+		0.40
+	)
+
+	SettingsManager.vibrate(
+		45,
+		0.45
+	)
+func _deactivate_power_up() -> void:
+	echo_breaker_active = false
+	gate_breaker_active = false
+
+	power_up_time_remaining = 0.0
+	power_up_duration = 0.0
+
+	power_up_hud.visible = false
+
+	player.set_power_up_visual(
+		false
+	)
+func _refresh_power_up_hud() -> void:
+	if (
+		not echo_breaker_active
+		and not gate_breaker_active
+	):
+		power_up_hud.visible = false
+		return
+
+	var ratio: float = 0.0
+
+	if power_up_duration > 0.0:
+		ratio = clampf(
+			power_up_time_remaining
+			/ power_up_duration,
+			0.0,
+			1.0
+		)
+
+	power_up_timer_fill.size.x = (
+		POWER_UP_TIMER_WIDTH * ratio
+	)
+
+	player.set_power_up_visual_ratio(
+		ratio
+	)
+
+	if echo_breaker_active:
+		power_up_name_label.text = (
+			"ECHO BREAKER  %.1fs"
+			% power_up_time_remaining
+		)
+
+		power_up_name_label.modulate = (
+			ECHO_BREAKER_COLOUR
+		)
+
+		power_up_timer_fill.color = (
+			ECHO_BREAKER_COLOUR
+		)
+
+	else:
+		power_up_name_label.text = (
+			"GATE BREAKER  %.1fs"
+			% power_up_time_remaining
+		)
+
+		power_up_name_label.modulate = (
+			GATE_BREAKER_COLOUR
+		)
+
+		power_up_timer_fill.color = (
+			GATE_BREAKER_COLOUR
+		)
+		
+func _update_power_up_timer(
+	delta: float
+) -> void:
+	if (
+		not echo_breaker_active
+		and not gate_breaker_active
+	):
+		return
+
+	power_up_time_remaining = maxf(
+		power_up_time_remaining - delta,
+		0.0
+	)
+
+	_refresh_power_up_hud()
+
+	if power_up_time_remaining <= 0.0:
+		_deactivate_power_up()
+		
+func _destroy_gate_with_power_up(
+	gate: PhaseGate
+) -> void:
+	if not is_instance_valid(gate):
+		return
+
+	hazard_close_states.erase(
+		gate.get_instance_id()
+	)
+
+	burst_particles.create_burst(
+		gate.position,
+		GATE_BREAKER_COLOUR,
+		28,
+		80.0,
+		210.0,
+		0.45
+	)
+
+	burst_particles.create_burst(
+		gate.position,
+		Color.WHITE,
+		10,
+		50.0,
+		140.0,
+		0.28
+	)
+
+	SettingsManager.vibrate(
+		45,
+		0.45
+	)
+
+	gate.set_deferred(
+		"monitoring",
+		false
+	)
+
+	gate.queue_free()
+	
+func _clear_uncollected_power_ups() -> void:
+	for child: Node in power_ups_container.get_children():
+		if child is Area2D:
+			var power_up_area: Area2D = (
+				child as Area2D
+			)
+
+			power_up_area.set_deferred(
+				"monitoring",
+				false
+			)
+
+		child.queue_free()

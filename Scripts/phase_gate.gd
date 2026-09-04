@@ -3,7 +3,7 @@ extends Area2D
 
 signal player_hit(hazard: Node2D)
 
-@export var gate_size: Vector2 = Vector2(52.0, 22.0)
+@export var gate_size: Vector2 = Vector2(50.0, 14.0)
 
 var blocks_inner_lane: bool = false
 var visual_time: float = 0.0
@@ -49,8 +49,9 @@ func configure_gate(
 		* lane_radius
 	)
 
-	# Rotate the rectangle so it follows the ring.
-	rotation = gate_angle + PI / 2.0
+	# Point the barrier radially across the lane,
+	# perpendicular to the player's direction of travel.
+	rotation = gate_angle
 
 	queue_redraw()
 

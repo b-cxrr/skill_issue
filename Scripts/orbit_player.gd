@@ -26,6 +26,11 @@ var lap_number: int = 0
 var current_lap_path: PackedFloat32Array = PackedFloat32Array()
 var input_locked_until: int = 0
 
+var power_up_visual_active: bool = false
+var power_up_visual_colour: Color = Color.WHITE
+var power_up_visual_time: float = 0.0
+var power_up_remaining_ratio: float = 1.0
+
 
 func _ready() -> void:
 	# Player occupies collision layer 1.
@@ -44,6 +49,10 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	if power_up_visual_active:
+		power_up_visual_time += delta
+		queue_redraw()
+
 	var angular_movement: float = angular_speed * delta
 
 	angle = fposmod(angle + angular_movement, TAU)
@@ -157,6 +166,9 @@ func _draw() -> void:
 	else:
 		_draw_default_skin()
 
+	if power_up_visual_active:
+		_draw_power_up_visual()
+
 
 func _draw_default_skin() -> void:
 	draw_circle(
@@ -244,3 +256,65 @@ func lock_lane_switching(duration_ms: int) -> void:
 func set_gilded_skin(enabled: bool) -> void:
 	gilded_skin_enabled = enabled
 	queue_redraw()
+func _draw_power_up_visual() -> void:
+	var pulse_speed: float = 7.0
+
+	# Become increasingly frantic shortly before expiry.
+	if power_up_remaining_ratio <= 0.25:
+		pulse_speed = 15.0
+
+	var pulse: float = (
+		sin(power_up_visual_time * pulse_speed)
+		+ 1.0
+	) * 0.5
+
+	var glow_colour: Color = Color(
+		power_up_visual_colour.r,
+		power_up_visual_colour.g,
+		power_up_visual_colour.b,
+		0.10 + pulse * 0.10
+	)
+
+	draw_circle(
+		Vector2.ZERO,
+		34.0 + pulse * 4.0,
+		glow_colour
+	)
+
+	draw_arc(
+		Vector2.ZERO,
+		29.0 + pulse * 2.0,
+		0.0,
+		TAU,
+		40,
+		Color(
+			power_up_visual_colour.r,
+			power_up_visual_colour.g,
+			power_up_visual_colour.b,
+			0.60 + pulse * 0.30
+		),
+		3.0,
+		true
+	)
+func set_power_up_visual(
+	active: bool,
+	colour: Color = Color.WHITE
+) -> void:
+	power_up_visual_active = active
+	power_up_visual_colour = colour
+
+	if active:
+		power_up_visual_time = 0.0
+		power_up_remaining_ratio = 1.0
+
+	queue_redraw()
+
+
+func set_power_up_visual_ratio(
+	ratio: float
+) -> void:
+	power_up_remaining_ratio = clampf(
+		ratio,
+		0.0,
+		1.0
+	)

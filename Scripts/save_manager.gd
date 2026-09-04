@@ -16,6 +16,7 @@ var selected_skin: String = DEFAULT_SKIN
 var total_runs: int = 0
 var total_laps: int = 0
 var total_near_misses: int = 0
+var total_echoes_destroyed: int = 0
 
 
 func _ready() -> void:
@@ -119,7 +120,8 @@ func save_data() -> void:
 		"selected_skin": selected_skin,
 		"total_runs": total_runs,
 		"total_laps": total_laps,
-		"total_near_misses": total_near_misses
+		"total_near_misses": total_near_misses,
+		"total_echoes_destroyed": total_echoes_destroyed
 	})
 
 
@@ -203,6 +205,12 @@ func load_data() -> void:
 		)
 	)
 
+	total_echoes_destroyed = int(
+		save_dictionary.get(
+			"total_echoes_destroyed",
+			0
+		)
+	)
 
 	total_near_misses = int(
 		save_dictionary.get(
@@ -248,3 +256,7 @@ func load_data() -> void:
 	# after they have loaded successfully.
 	if migrated_old_save:
 		save_data()
+
+func record_echo_destroyed() -> void:
+	total_echoes_destroyed += 1
+	save_data()

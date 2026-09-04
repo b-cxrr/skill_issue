@@ -42,7 +42,9 @@ dependencies {
     implementation "androidx.fragment:fragment:$versions.fragmentVersion"
     implementation "androidx.core:core-splashscreen:$versions.splashscreenVersion"
     implementation "androidx.documentfile:documentfile:$versions.documentfileVersion"
-    implementation "com.google.android.gms:play-services-games-v2:+"
+
+    implementation "com.google.android.gms:play-services-games-v2:22.0.0"
+
     if (rootProject.findProject(":lib")) {
         implementation project(":lib")
     } else if (rootProject.findProject(":godot:lib")) {
