@@ -7,6 +7,7 @@
 [ext_resource type="PackedScene" uid="uid://cidot5v5fvf8s" path="res://Scenes/phase_gate.tscn" id="3_kry3j"]
 [ext_resource type="PackedScene" uid="uid://hbr5aeceyw0h" path="res://Scenes/power_up.tscn" id="5_b3802"]
 [ext_resource type="AudioStream" uid="uid://cktcqh4wp6i3n" path="res://SoundFX/Digital_Switch_01.wav" id="6_344ge"]
+[ext_resource type="PackedScene" uid="uid://dlcdcbmtrk1cv" path="res://Scenes/token.tscn" id="6_fevyy"]
 [ext_resource type="AudioStream" uid="uid://b2yebn20s6o6w" path="res://SoundFX/Digital_Lap_01.wav" id="7_344ge"]
 [ext_resource type="AudioStream" uid="uid://drio67j51swjy" path="res://SoundFX/Digital_Impact_01.wav" id="8_344ge"]
 [ext_resource type="Script" uid="uid://3w1k05lyx4kq" path="res://Scripts/burst_particles.gd" id="9_ynf5e"]
@@ -16,8 +17,14 @@
 [ext_resource type="Script" uid="uid://dngn11qryn7so" path="res://Scripts/geometry_field.gd" id="12_fdnlq"]
 [ext_resource type="StyleBox" uid="uid://datd8ma0bu4aw" path="res://Scenes/UI_template.tres" id="14_k12tt"]
 [ext_resource type="StyleBox" uid="uid://n85raq3hi7lm" path="res://Scenes/UI_template_pressed.tres" id="15_h1bgf"]
+[ext_resource type="AudioStream" uid="uid://c2c1jxvcydxyb" path="res://SoundFX/power_up_2.wav" id="15_u50mg"]
 [ext_resource type="StyleBox" uid="uid://ecarub2bsmmd" path="res://Scenes/UI_template_hover.tres" id="16_b3802"]
+[ext_resource type="AudioStream" uid="uid://g68pvopbeui1" path="res://SoundFX/power_up_1.wav" id="16_cbgmd"]
 [ext_resource type="Texture2D" uid="uid://blj5eoxmbwd0c" path="res://Sprites/Icons/games_controller_white.png" id="16_h1bgf"]
+[ext_resource type="AudioStream" uid="uid://blxbyexbp54uu" path="res://SoundFX/token_pickup.wav" id="17_1w6v2"]
+[ext_resource type="AudioStream" uid="uid://bqb6vw3uwc5wf" path="res://SoundFX/echo_death.wav" id="18_ueoa1"]
+[ext_resource type="AudioStream" uid="uid://bk5ht6e3ttdwe" path="res://SoundFX/barrier_break_isolated.wav" id="19_6vcvc"]
+[ext_resource type="Script" uid="uid://c40wvnn5sbwnj" path="res://Scripts/cosmetics_menu.gd" id="20_hibaj"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_tls2j"]
 radius = 14.0
@@ -46,6 +53,7 @@ script = ExtResource("1_bo1nx")
 gate_scene = ExtResource("3_kry3j")
 echo_scene = ExtResource("3_jjvhh")
 power_up_scene = ExtResource("5_b3802")
+token_scene = ExtResource("6_fevyy")
 
 [node name="Player" type="Area2D" parent="Arena" unique_id=569246917]
 script = ExtResource("2_8gbba")
@@ -60,6 +68,8 @@ volume_db = -5.0
 [node name="Gates" type="Node2D" parent="Arena" unique_id=1546041584]
 
 [node name="PowerUps" type="Node2D" parent="Arena" unique_id=1565154088]
+
+[node name="Tokens" type="Node2D" parent="Arena" unique_id=166475841]
 
 [node name="ShiftTrail" type="Line2D" parent="Arena" unique_id=1153790173]
 visible = false
@@ -86,6 +96,26 @@ shockwave_scene = ExtResource("11_fdnlq")
 
 [node name="GeometryField" type="Node2D" parent="Arena/VisualController" unique_id=389702327]
 script = ExtResource("12_fdnlq")
+
+[node name="EchoBreakerPickupSound" type="AudioStreamPlayer" parent="Arena" unique_id=1113154485]
+stream = ExtResource("15_u50mg")
+volume_db = -9.0
+
+[node name="GateBreakerPickupSound" type="AudioStreamPlayer" parent="Arena" unique_id=1422182472]
+stream = ExtResource("16_cbgmd")
+volume_db = -7.0
+
+[node name="TokenPickupSound" type="AudioStreamPlayer" parent="Arena" unique_id=885197766]
+stream = ExtResource("17_1w6v2")
+volume_db = -8.0
+
+[node name="EchoDestroySound" type="AudioStreamPlayer" parent="Arena" unique_id=1513606346]
+stream = ExtResource("18_ueoa1")
+volume_db = -8.0
+
+[node name="GateDestroySound" type="AudioStreamPlayer" parent="Arena" unique_id=1337156979]
+stream = ExtResource("19_6vcvc")
+volume_db = -5.0
 
 [node name="UI" type="CanvasLayer" parent="." unique_id=680536527]
 
@@ -353,6 +383,18 @@ theme_override_styles/pressed = ExtResource("15_h1bgf")
 theme_override_styles/hover = ExtResource("16_b3802")
 text = "RESUME"
 
+[node name="VolumeLabel" type="Label" parent="UI/PauseMenu/PauseOverlay/PauseCenter/PauseVBox" unique_id=862162254]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "VOLUME: 100%"
+horizontal_alignment = 1
+
+[node name="VolumeSlider" type="HSlider" parent="UI/PauseMenu/PauseOverlay/PauseCenter/PauseVBox" unique_id=485383084]
+custom_minimum_size = Vector2(280, 42)
+layout_mode = 2
+step = 5.0
+value = 100.0
+
 [node name="SoundButton" type="Button" parent="UI/PauseMenu/PauseOverlay/PauseCenter/PauseVBox" unique_id=531149448]
 custom_minimum_size = Vector2(0, 56)
 layout_mode = 2
@@ -423,6 +465,7 @@ vertical_alignment = 1
 unique_name_in_owner = true
 visible = false
 layout_mode = 3
+anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
 offset_left = -120.0
@@ -451,3 +494,25 @@ layout_mode = 0
 offset_right = 240.0
 offset_bottom = 7.0
 color = Color(0.6901961, 0.42352942, 1, 1)
+
+[node name="TokenBalanceLabel" type="Label" parent="UI" unique_id=600214049]
+unique_name_in_owner = true
+anchors_preset = -1
+offset_left = 24.0
+offset_top = 50.0
+offset_right = 190.0
+offset_bottom = 70.0
+theme_override_colors/font_color = Color(0.4862745, 1, 0.69803923, 1)
+theme_override_font_sizes/font_size = 18
+text = "◆ 0"
+
+[node name="CosmeticsMenu" type="Control" parent="UI" unique_id=1138360352]
+unique_name_in_owner = true
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("20_hibaj")

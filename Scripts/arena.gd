@@ -25,11 +25,33 @@ extends Node2D
 @onready var stats_label: Label = (%StatsLabel)
 @onready var visual_controller: Node2D = $VisualController
 @onready var power_ups_container: Node2D = $PowerUps
+@onready var tokens_container: Node2D = $Tokens
 @onready var power_up_hud: Control = %PowerUpHUD
 @onready var power_up_name_label: Label = %PowerUpNameLabel
 @onready var power_up_timer_fill: ColorRect = %PowerUpTimerFill
+@onready var token_balance_label: Label = (%TokenBalanceLabel)
+@onready var cosmetics_menu: CosmeticsMenu = (
+	%CosmeticsMenu
+)
+@onready var echo_breaker_pickup_sound: AudioStreamPlayer = (
+	$EchoBreakerPickupSound
+)
 
+@onready var gate_breaker_pickup_sound: AudioStreamPlayer = (
+	$GateBreakerPickupSound
+)
 
+@onready var token_pickup_sound: AudioStreamPlayer = (
+	$TokenPickupSound
+)
+
+@onready var echo_destroy_sound: AudioStreamPlayer = (
+	$EchoDestroySound
+)
+
+@onready var gate_destroy_sound: AudioStreamPlayer = (
+	$GateDestroySound
+)
 
 @export var maximum_echoes: int = 1
 @export var gate_scene: PackedScene
@@ -37,11 +59,12 @@ extends Node2D
 @export var outer_radius: float = 240.0
 @export var echo_scene: PackedScene
 @export var power_up_scene: PackedScene
+@export var token_scene: PackedScene
 
 @export_category("Developer Capture")
 @export_range(0, 100, 1)
-var dev_start_round: int = 0
 
+var dev_start_round: int = 0
 var ring_colour: Color = Color("#303040")
 var inner_glow_colour: Color = Color("#183F46")
 var echo_count: int = 0
@@ -69,12 +92,12 @@ var risk_multiplier: float = 1.0
 var last_near_miss_time: int = 0
 var echo_breaker_active: bool = false
 var gate_breaker_active: bool = false
-
 var power_up_time_remaining: float = 0.0
 var power_up_duration: float = 0.0
-
 var laps_since_power_up: int = 0
 var echoes_destroyed_this_run: int = 0
+var tokens_collected_this_run: int = 0
+var cosmetics_menu_open: bool = false
 
 const LAP_POINTS: int = 100
 const NEAR_MISS_POINTS: int = 50
@@ -101,6 +124,18 @@ const POWER_UP_MIN_LAP_GAP: int = 2
 const POWER_UP_START_SAFE_ANGLE: float = PI / 3.0
 const POWER_UP_GATE_SAFE_DISTANCE: float = 55.0
 const POWER_UP_ECHO_SAFE_DISTANCE: float = 70.0
+# Collectible Tokens.
+const TOKEN_START_ROUND: int = 2
+const TOKEN_SPAWN_CHANCE: float = 0.65
+const TOKEN_PLACEMENT_ATTEMPTS: int = 24
+
+const TOKEN_START_SAFE_ANGLE: float = PI / 3.0
+
+const TOKEN_GATE_SAFE_DISTANCE: float = 48.0
+const TOKEN_POWER_UP_SAFE_DISTANCE: float = 50.0
+const TOKEN_ECHO_SAFE_DISTANCE: float = 60.0
+
+const TOKEN_COLOUR: Color = Color("#7CFFB2")
 
 const ECHO_BREAKER_DURATION: float = 5.0
 const GATE_BREAKER_DURATION: float = 5.0
@@ -116,13 +151,20 @@ func _ready() -> void:
 	risk_label.visible = false
 	near_miss_label.visible = false
 	
-	player.set_gilded_skin(
-		SaveManager.is_gilded_skin_selected()
-	)
+	player.set_skin(
+	SaveManager.selected_skin
+)
 	game_over_overlay.visible = false
 	achievement_label.visible = false
 	
 	skin_button.pressed.connect(_on_skin_button_pressed)
+	cosmetics_menu.closed.connect(
+		_on_cosmetics_menu_closed
+	)
+
+	cosmetics_menu.skin_changed.connect(
+		_on_cosmetics_skin_changed
+	)
 
 	leaderboards_button.pressed.connect(
 		_on_leaderboards_button_pressed
@@ -141,6 +183,7 @@ func _ready() -> void:
 	_apply_developer_capture_start()
 	_update_round_display()
 	_update_points_display()
+	_update_token_balance_display()
 	
 	start_center.visible = true
 	score_label.visible = false
@@ -212,6 +255,7 @@ func _on_player_lap_completed(
 	# Before Echoes begin, gates can be generated normally.
 	if current_round < 7:
 		_generate_gates()
+		_try_spawn_token()
 		return
 
 	if echo_scene == null:
@@ -220,6 +264,7 @@ func _on_player_lap_completed(
 		)
 		_generate_gates()
 		_try_spawn_power_up()
+		_try_spawn_token()
 		return
 
 	echo_count += 1
@@ -261,6 +306,7 @@ func _on_player_lap_completed(
 	# the active Echo into account.
 	_generate_gates(echo)
 	_try_spawn_power_up()
+	_try_spawn_token()
 
 func _draw() -> void:
 	draw_arc(Vector2.ZERO,inner_radius,0.0,TAU,128,inner_glow_colour,12.0,true)
@@ -313,7 +359,7 @@ func _on_hazard_hit_player(
 
 	burst_particles.create_burst(
 		player.position,
-		Color("#35F2E8"),
+		player.get_skin_effect_colour(),
 		14,
 		65.0,
 		180.0,
@@ -423,11 +469,14 @@ func _destroy_echo_with_power_up(
 ) -> void:
 	if not is_instance_valid(echo):
 		return
-
+	if echo_destroy_sound.stream != null:
+		echo_destroy_sound.play()
 	hazard_close_states.erase(
 		echo.get_instance_id()
 	)
-
+	_play_power_up_impact_shake(
+		9.0
+	)
 	current_points += ECHO_DESTROY_POINTS
 	echoes_destroyed_this_run += 1
 
@@ -468,6 +517,10 @@ func _destroy_echo_with_power_up(
 	echo.queue_free()
 
 func _unhandled_input(event: InputEvent) -> void:
+	
+	if cosmetics_menu_open:
+		return
+	
 	var pressed: bool = false
 
 	if event is InputEventScreenTouch:
@@ -1020,6 +1073,57 @@ func _play_collision_effect() -> void:
 		centre_position,
 		0.05
 	)
+func _play_power_up_impact_shake(
+	strength: float
+) -> void:
+	if collision_shake_tween != null:
+		collision_shake_tween.kill()
+
+	var centre_position: Vector2 = (
+		get_viewport_rect().size * 0.5
+	)
+
+	collision_shake_tween = create_tween()
+
+	collision_shake_tween.tween_property(
+		self,
+		"position",
+		centre_position
+		+ Vector2(
+			strength,
+			-strength * 0.55
+		),
+		0.025
+	)
+
+	collision_shake_tween.tween_property(
+		self,
+		"position",
+		centre_position
+		+ Vector2(
+			-strength * 0.75,
+			strength * 0.45
+		),
+		0.025
+	)
+
+	collision_shake_tween.tween_property(
+		self,
+		"position",
+		centre_position
+		+ Vector2(
+			strength * 0.45,
+			-strength * 0.25
+		),
+		0.025
+	)
+
+	collision_shake_tween.tween_property(
+		self,
+		"position",
+		centre_position,
+		0.04
+	)
 func _on_player_lane_switched(
 	switch_angle: float,
 	from_radius: float,
@@ -1030,6 +1134,10 @@ func _on_player_lane_switched(
 
 	var direction: Vector2 = Vector2.from_angle(
 		switch_angle
+	)
+
+	var skin_effect_colour: Color = (
+		player.get_skin_effect_colour()
 	)
 
 	shift_trail.clear_points()
@@ -1043,16 +1151,34 @@ func _on_player_lane_switched(
 	)
 
 	shift_trail.width = 11.0
+
+	shift_trail.default_color = (
+		skin_effect_colour
+	)
+
 	shift_trail.modulate = Color.WHITE
 	shift_trail.visible = true
 
 	shift_trail_tween = create_tween()
 
-	shift_trail_tween.tween_property(shift_trail,"modulate:a",0.0 ,0.24)
+	shift_trail_tween.tween_property(
+		shift_trail,
+		"modulate:a",
+		0.0,
+		0.24
+	)
 
-	shift_trail_tween.parallel().tween_property(shift_trail, "width", 1.0, 0.24)
+	shift_trail_tween.parallel().tween_property(
+		shift_trail,
+		"width",
+		1.0,
+		0.24
+	)
 
-	shift_trail_tween.tween_callback(func() -> void: shift_trail.visible = false)
+	shift_trail_tween.tween_callback(
+		func() -> void:
+			shift_trail.visible = false
+	)
 
 	var burst_position: Vector2 = (
 		direction * from_radius
@@ -1060,7 +1186,7 @@ func _on_player_lane_switched(
 
 	burst_particles.create_burst(
 		burst_position,
-		Color("#35F2E8"),
+		skin_effect_colour,
 		9,
 		45.0,
 		110.0,
@@ -1199,7 +1325,10 @@ func _check_level_10_achievement() -> void:
 	if not newly_unlocked:
 		return
 
-	player.set_gilded_skin(true)
+	player.set_skin(
+		SaveManager.GILDED_SKIN
+	)
+	_update_skin_button()
 	burst_particles.create_burst(
 		player.position,
 		Color("#FFD54A"),
@@ -1395,53 +1524,43 @@ func _highlight_hazard(
 func _on_leaderboards_button_pressed() -> void:
 	LeaderboardManager.show_all_leaderboards()
 
+func _on_cosmetics_menu_closed() -> void:
+	cosmetics_menu_open = false
 
-func _on_skin_button_pressed() -> void:
-	if not SaveManager.level_10_skin_unlocked:
-		return
+	_update_skin_button()
+	_update_token_balance_display()
 
-	var select_gilded: bool = (
-		not SaveManager.is_gilded_skin_selected()
-	)
 
-	if select_gilded:
-		SaveManager.select_skin(
-			SaveManager.GILDED_SKIN
-		)
-	else:
-		SaveManager.select_skin(
-			SaveManager.DEFAULT_SKIN
-		)
-
-	player.set_gilded_skin(
-		SaveManager.is_gilded_skin_selected()
+func _on_cosmetics_skin_changed(
+	skin_name: String
+) -> void:
+	player.set_skin(
+		skin_name
 	)
 
 	_update_skin_button()
-
-
-func _update_skin_button() -> void:
-	if not SaveManager.level_10_skin_unlocked:
-		skin_button.text = (
-			"SKIN: DEFAULT\n"
-			+ "GILDED UNLOCKS AT 10"
-		)
-
-		skin_button.disabled = true
+	_update_token_balance_display()
+func _on_skin_button_pressed() -> void:
+	if game_started:
 		return
 
+	cosmetics_menu_open = true
+
+	cosmetics_menu.open_menu()
+
+func _update_skin_button() -> void:
 	skin_button.disabled = false
 
-	if SaveManager.is_gilded_skin_selected():
-		skin_button.text = (
-			"SKIN: GILDED\n"
-			+ "TAP TO CHANGE"
-		)
-	else:
-		skin_button.text = (
-			"SKIN: DEFAULT\n"
-			+ "TAP TO CHANGE"
-		)
+	skin_button.text = (
+		"COSMETICS\n"
+		+ "%s  ·  ◆ %d"
+		% [
+			SaveManager.get_skin_display_name(
+				SaveManager.selected_skin
+			),
+			SaveManager.token_balance
+		]
+	)
 func _get_gate_total() -> int:
 	if current_round >= 32:
 		return 5
@@ -1771,7 +1890,197 @@ func _try_spawn_power_up() -> void:
 	)
 
 	laps_since_power_up = 0
-	
+func _try_spawn_token() -> void:
+	_clear_uncollected_tokens()
+
+	if token_scene == null:
+		return
+
+	if current_round < TOKEN_START_ROUND:
+		return
+
+	if randf() > TOKEN_SPAWN_CHANCE:
+		return
+
+	var spawn_position: Vector2 = Vector2.ZERO
+	var placement_found: bool = false
+
+	for _attempt: int in range(
+		TOKEN_PLACEMENT_ATTEMPTS
+	):
+		var angle_offset: float = randf_range(
+			TOKEN_START_SAFE_ANGLE,
+			TAU - TOKEN_START_SAFE_ANGLE
+		)
+
+		var spawn_angle: float = fposmod(
+			player.angle + angle_offset,
+			TAU
+		)
+
+		var spawn_radius: float
+
+		if randi_range(0, 1) == 0:
+			spawn_radius = inner_radius
+		else:
+			spawn_radius = outer_radius
+
+		var candidate_position: Vector2 = (
+			Vector2.from_angle(
+				spawn_angle
+			)
+			* spawn_radius
+		)
+
+		if not _is_token_position_safe(
+			candidate_position
+		):
+			continue
+
+		spawn_position = candidate_position
+		placement_found = true
+		break
+
+	if not placement_found:
+		return
+
+	var token: SkillToken = (
+		token_scene.instantiate()
+		as SkillToken
+	)
+
+	if token == null:
+		push_warning(
+			"Token scene is not a SkillToken."
+		)
+		return
+
+	token.position = spawn_position
+
+	tokens_container.add_child(
+		token
+	)
+
+	token.collected.connect(
+		_on_token_collected
+	)
+func _is_token_position_safe(
+	candidate_position: Vector2
+) -> bool:
+	for child: Node in gates_container.get_children():
+		if not child is PhaseGate:
+			continue
+
+		var gate: PhaseGate = (
+			child as PhaseGate
+		)
+
+		if (
+			candidate_position.distance_to(
+				gate.position
+			)
+			< TOKEN_GATE_SAFE_DISTANCE
+		):
+			return false
+
+	for child: Node in power_ups_container.get_children():
+		if not child is SkillPowerUp:
+			continue
+
+		var power_up: SkillPowerUp = (
+			child as SkillPowerUp
+		)
+
+		if (
+			candidate_position.distance_to(
+				power_up.position
+			)
+			< TOKEN_POWER_UP_SAFE_DISTANCE
+		):
+			return false
+
+	for child: Node in get_children():
+		if not child is OrbitEcho:
+			continue
+
+		var echo: OrbitEcho = (
+			child as OrbitEcho
+		)
+
+		if (
+			candidate_position.distance_to(
+				echo.position
+			)
+			< TOKEN_ECHO_SAFE_DISTANCE
+		):
+			return false
+
+	return true
+func _clear_uncollected_tokens() -> void:
+	for child: Node in tokens_container.get_children():
+		if child is Area2D:
+			var token_area: Area2D = (
+				child as Area2D
+			)
+
+			token_area.set_deferred(
+				"monitoring",
+				false
+			)
+
+		child.queue_free()
+
+func _on_token_collected(
+	token: SkillToken
+) -> void:
+	if not is_instance_valid(token):
+		return
+	if token_pickup_sound.stream != null:
+		token_pickup_sound.play()
+	tokens_collected_this_run += 1
+
+	# Developer Capture runs cannot farm
+	# permanent currency.
+	if run_is_ranked:
+		SaveManager.add_tokens(1)
+
+	burst_particles.create_burst(
+		token.position,
+		TOKEN_COLOUR,
+		18,
+		55.0,
+		150.0,
+		0.32
+	)
+
+	burst_particles.create_burst(
+		token.position,
+		Color.WHITE,
+		7,
+		35.0,
+		95.0,
+		0.20
+	)
+
+	SettingsManager.vibrate(
+		22,
+		0.22
+	)
+
+	_update_token_balance_display()
+	_animate_token_counter()
+
+	token.queue_free()
+
+
+
+
+
+
+
+
+
+
 func _is_power_up_position_safe(
 	candidate_position: Vector2
 ) -> bool:
@@ -1848,6 +2157,13 @@ func _activate_power_up(
 		power_up_colour = GATE_BREAKER_COLOUR
 
 	power_up_time_remaining = power_up_duration
+	if echo_breaker_active:
+		if echo_breaker_pickup_sound.stream != null:
+			echo_breaker_pickup_sound.play()
+
+	elif gate_breaker_active:
+		if gate_breaker_pickup_sound.stream != null:
+			gate_breaker_pickup_sound.play()
 
 	power_up_hud.visible = true
 
@@ -1961,7 +2277,11 @@ func _destroy_gate_with_power_up(
 ) -> void:
 	if not is_instance_valid(gate):
 		return
-
+	if gate_destroy_sound.stream != null:
+		gate_destroy_sound.play()
+		_play_power_up_impact_shake(
+		6.0
+	)
 	hazard_close_states.erase(
 		gate.get_instance_id()
 	)
@@ -2009,3 +2329,36 @@ func _clear_uncollected_power_ups() -> void:
 			)
 
 		child.queue_free()
+func _update_token_balance_display() -> void:
+	token_balance_label.text = (
+		"◆ %d"
+		% SaveManager.token_balance
+	)
+	
+func _animate_token_counter() -> void:
+	token_balance_label.pivot_offset = (
+		token_balance_label.size * 0.5
+	)
+
+	token_balance_label.scale = Vector2.ONE
+
+	var tween: Tween = create_tween()
+
+	tween.tween_property(
+		token_balance_label,
+		"scale",
+		Vector2(1.18, 1.18),
+		0.07
+	)
+
+	tween.tween_property(
+		token_balance_label,
+		"scale",
+		Vector2.ONE,
+		0.12
+	)
+func is_power_up_active() -> bool:
+	return (
+		echo_breaker_active
+		or gate_breaker_active
+	)
