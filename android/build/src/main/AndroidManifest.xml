@@ -28,7 +28,9 @@
             android:shell="true"
             android:enabled="true"
             tools:targetApi="29" />
-
+        <meta-data
+            android:name="com.google.android.gms.games.APP_ID"
+            android:value="@string/game_services_project_id" />
         <activity
             android:name=".GodotApp"
             android:theme="@style/GodotAppSplashTheme"

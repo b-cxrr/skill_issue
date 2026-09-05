@@ -64,7 +64,19 @@ func _initialise_android_bridge() -> void:
 			"LeaderboardManager: Android Activity unavailable."
 		)
 		return
+	var PlayGamesSdk = JavaClassWrapper.wrap(
+		"com.google.android.gms.games.PlayGamesSdk"
+	)
 
+	if PlayGamesSdk == null:
+		push_warning(
+			"LeaderboardManager: PlayGamesSdk unavailable."
+		)
+		return
+
+	PlayGamesSdk.initialize(
+		_activity
+	)
 	var PlayGames = JavaClassWrapper.wrap(
 		"com.google.android.gms.games.PlayGames"
 	)
