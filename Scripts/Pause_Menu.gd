@@ -37,7 +37,7 @@ extends Control
 	%PowerUpHUD
 )
 @onready var arena: Node = (
-	get_tree().current_scene
+	get_node("../../Arena")
 )
 
 

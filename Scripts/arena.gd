@@ -67,7 +67,6 @@ extends Node2D
 var dev_start_round: int = 0
 var ring_colour: Color = Color("#303040")
 var inner_glow_colour: Color = Color("#183F46")
-var echo_count: int = 0
 var is_game_over: bool = false
 var restart_allowed_at: int = 0
 var current_round: int = 0
@@ -98,6 +97,9 @@ var laps_since_power_up: int = 0
 var echoes_destroyed_this_run: int = 0
 var tokens_collected_this_run: int = 0
 var cosmetics_menu_open: bool = false
+
+const LapSafety = preload("res://Scripts/lap_safety.gd")
+const ECHO_SPAWN_PHASE: float = 0.35
 
 const LAP_POINTS: int = 100
 const NEAR_MISS_POINTS: int = 50
@@ -191,6 +193,7 @@ func _ready() -> void:
 	_animate_start_prompt()
 
 	player.set_process(false)
+	player.set_physics_process(false)
 	player.set_process_unhandled_input(false)
 
 	_centre_arena()
@@ -267,8 +270,6 @@ func _on_player_lap_completed(
 		_try_spawn_token()
 		return
 
-	echo_count += 1
-
 	var echo: OrbitEcho = (
 		echo_scene.instantiate() as OrbitEcho
 	)
@@ -281,14 +282,10 @@ func _on_player_lap_completed(
 		_try_spawn_power_up()
 		return
 
-	var phase_offset: float = (
-		float(echo_count) * 0.35
-	)
-
 	echo.setup(
 		path,
 		recorded_speed,
-		phase_offset,
+		ECHO_SPAWN_PHASE,
 		_get_echo_speed_multiplier(),
 		_get_echo_warning_time(),
 		_get_echo_collision_radius()
@@ -301,6 +298,7 @@ func _on_player_lap_completed(
 	)
 
 	_limit_active_echoes()
+	_validate_echo_spawn(echo)
 
 	# Now generate the new lap's gates while taking
 	# the active Echo into account.
@@ -321,7 +319,7 @@ func _draw() -> void:
 func _on_hazard_hit_player(
 	hazard: Node2D
 ) -> void:
-	if is_game_over:
+	if is_game_over or not game_started or hazard.is_queued_for_deletion():
 		return
 
 	if (
@@ -381,7 +379,10 @@ func _on_hazard_hit_player(
 			current_near_misses
 		)
 
-		LeaderboardManager.sync_saved_records()
+		LeaderboardManager.submit_completed_run(
+			current_points, current_round,
+			SaveManager.total_runs, SaveManager.total_laps
+		)
 	else:
 		print(
 			"DEV CAPTURE MODE - RUN NOT SAVED OR SUBMITTED"
@@ -454,6 +455,7 @@ func _on_hazard_hit_player(
 	risk_label.visible = false
 
 	player.set_process(false)
+	player.set_physics_process(false)
 	player.set_process_unhandled_input(false)
 
 	player.modulate = Color("#FF315F")
@@ -462,6 +464,7 @@ func _on_hazard_hit_player(
 	for child: Node in get_children():
 		if child is OrbitEcho:
 			child.set_process(false)
+			child.set_physics_process(false)
 			child.set_deferred("monitoring", false)
 
 func _destroy_echo_with_power_up(
@@ -639,6 +642,12 @@ func _build_gate_layout(
 	gate_total: int,
 	active_echo: OrbitEcho = null
 ) -> Array[Dictionary]:
+	var validator = LapSafety.new()
+	var template: PhaseGate = gate_scene.instantiate() as PhaseGate
+	if template == null:
+		return []
+	validator.configure(player, _get_active_echoes(active_echo), template.gate_size)
+	template.free()
 	for layout_attempt: int in range(
 		GATE_LAYOUT_ATTEMPTS
 	):
@@ -699,13 +708,18 @@ func _build_gate_layout(
 		):
 			layout_valid = false
 
-		if layout_valid:
+		if layout_valid and not validator.find_route(layout).is_empty():
 			return layout
 
-	return _build_safe_gate_layout(
-	gate_total,
-	active_echo
-)
+	# Fallback gates must pass the same whole-lap check.
+	var fallback: Array[Dictionary] = _build_safe_gate_layout(gate_total, active_echo)
+	var safe_layout: Array[Dictionary] = []
+	for gate: Dictionary in fallback:
+		var trial: Array[Dictionary] = safe_layout.duplicate()
+		trial.append(gate)
+		if not validator.find_route(trial).is_empty():
+			safe_layout = trial
+	return safe_layout
 		
 		
 	
@@ -769,11 +783,10 @@ func _is_gate_candidate_valid(
 				< GATE_MIN_OPPOSITE_LANE_SEPARATION
 			):
 				return false
-		if not _is_gate_echo_safe(
-		candidate_angle,
-		candidate_blocks_inner,
-		active_echo
-	):
+	# Every gate, including the first, is checked against every surviving Echo.
+	var echoes: Array[OrbitEcho] = _get_active_echoes(active_echo)
+	for echo: OrbitEcho in echoes:
+		if not _is_gate_echo_safe(candidate_angle, candidate_blocks_inner, echo):
 			return false
 	return true
 func _is_gate_echo_safe(
@@ -968,6 +981,30 @@ func _circular_angle_distance(
 
 
 
+func _validate_echo_spawn(echo: OrbitEcho) -> bool:
+	# Reject a new Echo if even a gate-free lap has no verified safe route.
+	# This is conservative: a very tight path may exist outside our search.
+	var validator = LapSafety.new()
+	var no_gates: Array[Dictionary] = []
+	validator.configure(player, _get_active_echoes(echo), Vector2.ZERO)
+	if not validator.find_route(no_gates).is_empty():
+		return true
+	echo.set_physics_process(false)
+	echo.set_deferred("monitoring", false)
+	echo.queue_free()
+	return false
+
+
+func _get_active_echoes(extra: OrbitEcho = null) -> Array[OrbitEcho]:
+	var echoes: Array[OrbitEcho] = []
+	for child: Node in get_children():
+		if child is OrbitEcho and not child.is_queued_for_deletion():
+			echoes.append(child as OrbitEcho)
+	if is_instance_valid(extra) and not extra.is_queued_for_deletion() and not echoes.has(extra):
+		echoes.append(extra)
+	return echoes
+
+
 func _limit_active_echoes() -> void:
 	var active_echoes: Array[OrbitEcho] = []
 
@@ -980,6 +1017,8 @@ func _limit_active_echoes() -> void:
 	while active_echoes.size() > maximum_echoes:
 		var oldest_echo: OrbitEcho = active_echoes[0]
 
+		oldest_echo.set_physics_process(false)
+		oldest_echo.set_deferred("monitoring", false)
 		oldest_echo.queue_free()
 		active_echoes.remove_at(0)
 func _start_game() -> void:
@@ -999,6 +1038,7 @@ func _start_game() -> void:
 	player.lock_lane_switching(200)
 
 	player.set_process(true)
+	player.set_physics_process(true)
 	player.set_process_unhandled_input(true)
 	
 func _play_collision_effect() -> void:

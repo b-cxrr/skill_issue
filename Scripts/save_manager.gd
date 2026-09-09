@@ -14,6 +14,9 @@ const VOLTAGE_SKIN_PRICE: int = 50
 const GLITCH_SKIN_PRICE: int = 75
 
 
+var leaderboard_owner_id: String = ""
+var leaderboard_pending_scores: Dictionary = {}
+
 var best_points: int = 0
 var best_round: int = 0
 
@@ -167,6 +170,8 @@ func save_data() -> void:
 		return
 
 	file.store_var({
+		"leaderboard_owner_id": leaderboard_owner_id,
+		"leaderboard_pending_scores": leaderboard_pending_scores,
 		"best_points": best_points,
 		"best_round": best_round,
 		"level_10_skin_unlocked": level_10_skin_unlocked,
@@ -203,6 +208,10 @@ func load_data() -> void:
 	var save_dictionary: Dictionary = (
 		data as Dictionary
 	)
+
+	leaderboard_owner_id = str(save_dictionary.get("leaderboard_owner_id", ""))
+	var saved_pending: Variant = save_dictionary.get("leaderboard_pending_scores", {})
+	leaderboard_pending_scores = saved_pending.duplicate() if saved_pending is Dictionary else {}
 
 	var migrated_old_save: bool = false
 

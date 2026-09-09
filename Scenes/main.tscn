@@ -54,7 +54,6 @@ gate_scene = ExtResource("3_kry3j")
 echo_scene = ExtResource("3_jjvhh")
 power_up_scene = ExtResource("5_b3802")
 token_scene = ExtResource("6_fevyy")
-dev_start_round = 17
 
 [node name="Player" type="Area2D" parent="Arena" unique_id=569246917]
 script = ExtResource("2_8gbba")

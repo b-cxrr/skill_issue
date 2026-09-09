@@ -18,12 +18,14 @@ const BUTTON_HOVER = preload(
 )
 
 
+const SaveData = preload("res://Scripts/save_manager.gd")
+
 const SKIN_ORDER: Array[String] = [
-	SaveManager.DEFAULT_SKIN,
-	SaveManager.GILDED_SKIN,
-	SaveManager.CRIMSON_SKIN,
-	SaveManager.VOLTAGE_SKIN,
-	SaveManager.GLITCH_SKIN
+	SaveData.DEFAULT_SKIN,
+	SaveData.GILDED_SKIN,
+	SaveData.CRIMSON_SKIN,
+	SaveData.VOLTAGE_SKIN,
+	SaveData.GLITCH_SKIN
 ]
 const TOKEN_COLOUR: Color = Color("#7CFFB2")
 const STATUS_COLOUR: Color = Color("#F7F7FF")

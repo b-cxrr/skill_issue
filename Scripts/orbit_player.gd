@@ -11,7 +11,10 @@ signal lane_switched(switch_angle: float,from_radius: float,to_radius: float)
 
 @onready var shift_sound: AudioStreamPlayer = ($ShiftSound)
 
-var angle: float = -PI / 2.0
+const STARTING_ANGLE: float = -PI / 2.0
+const PATH_SEGMENTS: int = 360
+
+var angle: float = STARTING_ANGLE
 
 var is_on_inner_lane: bool = false
 var current_radius: float
@@ -67,45 +70,42 @@ func _process(delta: float) -> void:
 		power_up_visual_time += delta
 		queue_redraw()
 
-	var angular_movement: float = angular_speed * delta
 
-	angle = fposmod(
-		angle + angular_movement,
-		TAU
-	)
-
-	lap_distance += angular_movement
-
-	var lane_distance: float = absf(
-		outer_radius - inner_radius
-	)
-
-	var lane_speed: float = (
-		lane_distance
-		/ lane_switch_duration
-	)
-
-	current_radius = move_toward(
-		current_radius,
-		target_radius,
-		lane_speed * delta
-	)
-
-	position = (
-		Vector2.from_angle(angle)
-		* current_radius
-	)
-
-	current_lap_path.append(
-		current_radius
-	)
-
-	if lap_distance >= TAU:
-		lap_distance -= TAU
-		_complete_lap()
+func _physics_process(delta: float) -> void:
+	if preview_mode or angular_speed <= 0.0:
+		return
+	var completed_paths: Array[PackedFloat32Array] = []
+	var remaining: float = delta
+	var lane_speed: float = absf(outer_radius - inner_radius) / maxf(lane_switch_duration, 0.001)
+	while remaining > 0.000001:
+		# Split exactly at the lap seam; neither recording inherits an overshoot.
+		var seconds_to_seam: float = (TAU - lap_distance) / angular_speed
+		var step: float = minf(remaining, seconds_to_seam)
+		var old_distance: float = lap_distance
+		var old_radius: float = current_radius
+		lap_distance += angular_speed * step
+		current_radius = move_toward(current_radius, target_radius, lane_speed * step)
+		# Uniform angular samples, regardless of render FPS or physics tick rate.
+		while current_lap_path.size() <= PATH_SEGMENTS:
+			var sample_angle: float = float(current_lap_path.size()) * TAU / float(PATH_SEGMENTS)
+			if sample_angle > lap_distance + 0.000001:
+				break
+			var sample_time: float = maxf(0.0, (sample_angle - old_distance) / angular_speed)
+			current_lap_path.append(move_toward(old_radius, target_radius, lane_speed * sample_time))
+		angle = fposmod(STARTING_ANGLE + lap_distance, TAU)
+		position = Vector2.from_angle(angle) * current_radius
+		remaining -= step
+		if step >= seconds_to_seam:
+			lap_distance = 0.0
+			angle = fposmod(STARTING_ANGLE, TAU)
+			position = Vector2.from_angle(angle) * current_radius
+			completed_paths.append(_complete_lap())
+	# Spawn hazards after the entire physics step, using the actual current position.
+	for path: PackedFloat32Array in completed_paths:
+		lap_completed.emit(path, angular_speed)
 
 
-func _complete_lap() -> void:
+func _complete_lap() -> PackedFloat32Array:
 	lap_number += 1
 
 	var completed_path: PackedFloat32Array = (
@@ -117,10 +117,7 @@ func _complete_lap() -> void:
 
 
 
-	lap_completed.emit(
-		completed_path,
-		angular_speed
-	)
+	return completed_path
 
 
 func _unhandled_input(event: InputEvent) -> void:
