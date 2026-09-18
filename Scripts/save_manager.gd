@@ -82,7 +82,34 @@ func record_completed_run(
 		"new_best_round": got_new_best_round,
 		"new_best_points": got_new_best_points
 	}
+func reconcile_online_records(
+	online_best_points: int,
+	online_best_round: int,
+	online_total_runs: int,
+	online_total_laps: int
+) -> bool:
+	var changed: bool = false
 
+	if online_best_points > best_points:
+		best_points = online_best_points
+		changed = true
+
+	if online_best_round > best_round:
+		best_round = online_best_round
+		changed = true
+
+	if online_total_runs > total_runs:
+		total_runs = online_total_runs
+		changed = true
+
+	if online_total_laps > total_laps:
+		total_laps = online_total_laps
+		changed = true
+
+	if changed:
+		save_data()
+
+	return changed
 
 func select_skin(skin_name: String) -> bool:
 	if not is_skin_owned(skin_name):

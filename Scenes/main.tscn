@@ -24,6 +24,7 @@
 [ext_resource type="AudioStream" uid="uid://blxbyexbp54uu" path="res://SoundFX/token_pickup.wav" id="17_1w6v2"]
 [ext_resource type="AudioStream" uid="uid://bqb6vw3uwc5wf" path="res://SoundFX/echo_death.wav" id="18_ueoa1"]
 [ext_resource type="AudioStream" uid="uid://bk5ht6e3ttdwe" path="res://SoundFX/barrier_break_isolated.wav" id="19_6vcvc"]
+[ext_resource type="Script" uid="uid://bcwx2sxly6y4m" path="res://Scripts/build_info_label.gd" id="20_cbgmd"]
 [ext_resource type="Script" uid="uid://c40wvnn5sbwnj" path="res://Scripts/cosmetics_menu.gd" id="20_hibaj"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_tls2j"]
@@ -32,6 +33,9 @@ radius = 14.0
 [sub_resource type="LabelSettings" id="LabelSettings_tls2j"]
 font_size = 22
 font_color = Color(1, 0.8352941, 0.2901961, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_g868d"]
+font_color = Color(1, 1, 1, 0.3137255)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_7sicb"]
 bg_color = Color(0.0627451, 0.07450981, 0.12156863, 0.8509804)
@@ -206,6 +210,25 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 20
 text = "TAP TO BEGIN"
 horizontal_alignment = 1
+
+[node name="BuildInfoLabel" type="Label" parent="UI" unique_id=232314450]
+unique_name_in_owner = true
+anchors_preset = -1
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -133.0
+offset_top = -25.0
+offset_right = -12.0
+offset_bottom = -16.0
+grow_horizontal = 0
+grow_vertical = 0
+offset_transform_enabled = true
+theme_override_font_sizes/font_size = 14
+text = "v1.2.0 . 12 . 120926"
+label_settings = SubResource("LabelSettings_g868d")
+script = ExtResource("20_cbgmd")
 
 [node name="GameOverOverlay" type="ColorRect" parent="UI" unique_id=945866359]
 unique_name_in_owner = true

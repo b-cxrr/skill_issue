@@ -2,7 +2,13 @@ extends Node
 
 signal service_ready_changed(is_ready: bool)
 signal submission_finished(leaderboard_key: String, value: int, successful: bool, new_all_time_best: bool)
+signal records_sync_finished(
+	records: Dictionary,
+	changed_local_save: bool
+)
 
+const LEADERBOARD_TIME_SPAN_ALL_TIME: int = 2
+const LEADERBOARD_COLLECTION_PUBLIC: int = 0
 const HIGH_SCORE: String = "highest_score"
 const HIGHEST_ROUND: String = "highest_round"
 const LIFETIME_RUNS: String = "lifetime_runs"
@@ -24,6 +30,12 @@ var pending_scores: Dictionary = {}
 var last_submission_results: Dictionary = {}
 var last_error: String = ""
 
+var _record_sync_pending: bool = false
+var _record_sync_remaining: int = 0
+var _record_sync_had_error: bool = false
+var _record_sync_values: Dictionary = {}
+var _record_sync_player_id: String = ""
+var _records_synced_player_id: String = ""
 var _android_runtime = null
 var _activity = null
 var _games_sign_in_client = null
@@ -150,14 +162,20 @@ func _apply_player_identity(player_id: String) -> void:
 		SaveManager.leaderboard_owner_id = player_id
 		SaveManager.save_data()
 	set_service_ready(true)
+
 	if not _owner_matches() and _build_allows_submissions():
-		_report_error("This save belongs to another Play Games account. Score uploads are on hold; sign back into its account.")
+		_report_error(
+			"This save belongs to another Play Games account. "
+			+ "Score uploads are on hold; sign back into its account."
+		)
+
+	_sync_online_records()
 	_flush_pending_scores()
+
 	if not _requested_board.is_empty():
 		var requested: String = _requested_board
 		_requested_board = ""
 		_open_board(requested)
-
 
 func _build_allows_submissions() -> bool:
 	# Internal Play testing uses a release export of the production package.
@@ -167,6 +185,145 @@ func _build_allows_submissions() -> bool:
 
 func _owner_matches() -> bool:
 	return not _active_player_id.is_empty() and _active_player_id == SaveManager.leaderboard_owner_id
+
+func _sync_online_records() -> void:
+	if not _build_allows_submissions():
+		return
+
+	if not service_ready:
+		return
+
+	if not _owner_matches():
+		return
+
+	if _record_sync_pending:
+		return
+
+	if _records_synced_player_id == _active_player_id:
+		return
+
+	_record_sync_pending = true
+	_record_sync_remaining = 4
+	_record_sync_had_error = false
+	_record_sync_values.clear()
+	_record_sync_player_id = _active_player_id
+	print("SYNC TEST: reached before first leaderboard load")
+	_load_online_record(HIGH_SCORE)
+	#_load_online_record(HIGHEST_ROUND)
+	#_load_online_record(LIFETIME_RUNS)
+	#_load_online_record(LIFETIME_LAPS)
+	
+	
+func _load_online_record(
+	key: String
+) -> void:
+	if _leaderboards_client == null:
+		print("SYNC TEST: leaderboards client is null")
+		return
+
+	var leaderboard_id: String = _get_leaderboard_id(key)
+
+	if leaderboard_id.is_empty():
+		print("SYNC TEST: leaderboard ID is empty")
+		return
+
+	print("SYNC TEST: immediately before Java leaderboard call")
+
+	var task = (
+		_leaderboards_client
+		.loadCurrentPlayerLeaderboardScore(
+			leaderboard_id,
+			LEADERBOARD_TIME_SPAN_ALL_TIME,
+			LEADERBOARD_COLLECTION_PUBLIC
+		)
+	)
+
+	print("SYNC TEST: returned from Java leaderboard call")
+
+	_watch_task(
+		task,
+		func(_result, _error: String) -> void:
+			print("SYNC TEST: task callback fired")
+	)
+
+
+func _finish_online_record_load(
+	key: String,
+	value: int,
+	successful: bool,
+	error: String
+) -> void:
+	if successful:
+		_record_sync_values[key] = value
+	else:
+		_record_sync_had_error = true
+
+		if not error.is_empty():
+			_report_error(
+				"Could not load %s: %s"
+				% [
+					key,
+					error
+				]
+			)
+
+	_record_sync_remaining -= 1
+
+	if _record_sync_remaining > 0:
+		return
+
+	var sync_player_id: String = (
+		_record_sync_player_id
+	)
+
+	_record_sync_pending = false
+	_record_sync_player_id = ""
+
+	if sync_player_id != _active_player_id:
+		return
+
+	if not _owner_matches():
+		return
+
+	var changed_local_save: bool = (
+		SaveManager.reconcile_online_records(
+			int(
+				_record_sync_values.get(
+					HIGH_SCORE,
+					0
+				)
+			),
+			int(
+				_record_sync_values.get(
+					HIGHEST_ROUND,
+					0
+				)
+			),
+			int(
+				_record_sync_values.get(
+					LIFETIME_RUNS,
+					0
+				)
+			),
+			int(
+				_record_sync_values.get(
+					LIFETIME_LAPS,
+					0
+				)
+			)
+		)
+	)
+
+	if not _record_sync_had_error:
+		_records_synced_player_id = (
+			sync_player_id
+		)
+
+	records_sync_finished.emit(
+		_record_sync_values.duplicate(),
+		changed_local_save
+	)
+
 
 
 func submit_completed_run(points: int, round_reached: int, total_runs: int, total_laps: int) -> void:

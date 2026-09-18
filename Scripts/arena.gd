@@ -9,6 +9,7 @@ extends Node2D
 @onready var best_score_label: Label = (%BestScoreLabel)
 @onready var gates_container: Node2D = $Gates
 @onready var start_center: CenterContainer = (%StartCenter)
+@onready var build_info_label: Label = %BuildInfoLabel	
 @onready var hit_flash: ColorRect = (%HitFlash)
 @onready var lap_sound: AudioStreamPlayer = ($LapSound)
 @onready var shift_trail: Line2D = ($ShiftTrail)
@@ -188,6 +189,7 @@ func _ready() -> void:
 	_update_token_balance_display()
 	
 	start_center.visible = true
+	build_info_label.visible = true
 	score_label.visible = false
 	points_label.visible = false
 	_animate_start_prompt()
@@ -1031,6 +1033,7 @@ func _start_game() -> void:
 	game_started = true
 
 	start_center.visible = false
+	build_info_label.visible = false
 	score_label.visible = true
 	points_label.visible = true
 
