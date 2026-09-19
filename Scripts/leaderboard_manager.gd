@@ -242,8 +242,44 @@ func _load_online_record(
 
 	_watch_task(
 		task,
-		func(_result, _error: String) -> void:
+		func(result, error: String) -> void:
 			print("SYNC TEST: task callback fired")
+
+			if not error.is_empty():
+				print("SYNC TEST: task error: ", error)
+				return
+
+			if result == null:
+				print("SYNC TEST: task result is null")
+				return
+
+			var score_helper = JavaClassWrapper.wrap(
+				"com.bcxrr.skillissue.LeaderboardScoreHelper"
+			)
+
+			if score_helper == null:
+				print("SYNC TEST: score helper unavailable")
+				return
+
+			print("SYNC TEST: immediately before Java helper")
+
+			var raw_score_result = score_helper.getRawScore(result)
+
+			var java_exception = JavaClassWrapper.get_exception()
+
+			if java_exception != null:
+				print(
+					"SYNC TEST: Java helper exception: ",
+					java_exception
+				)
+				return
+
+			var raw_score: int = int(raw_score_result)
+
+			print(
+				"SYNC TEST: Java helper returned raw score = ",
+				raw_score
+			)
 	)
 
 
