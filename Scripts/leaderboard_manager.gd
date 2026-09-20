@@ -209,25 +209,38 @@ func _sync_online_records() -> void:
 	_record_sync_player_id = _active_player_id
 	print("SYNC TEST: reached before first leaderboard load")
 	_load_online_record(HIGH_SCORE)
-	#_load_online_record(HIGHEST_ROUND)
-	#_load_online_record(LIFETIME_RUNS)
-	#_load_online_record(LIFETIME_LAPS)
+	_load_online_record(HIGHEST_ROUND)
+	_load_online_record(LIFETIME_RUNS)
+	_load_online_record(LIFETIME_LAPS)
 	
 	
 func _load_online_record(
 	key: String
 ) -> void:
 	if _leaderboards_client == null:
-		print("SYNC TEST: leaderboards client is null")
+		_finish_online_record_load(
+			key,
+			0,
+			false,
+			"Leaderboards client unavailable."
+		)
 		return
 
 	var leaderboard_id: String = _get_leaderboard_id(key)
 
 	if leaderboard_id.is_empty():
-		print("SYNC TEST: leaderboard ID is empty")
+		_finish_online_record_load(
+			key,
+			0,
+			false,
+			"Leaderboard ID unavailable."
+		)
 		return
 
-	print("SYNC TEST: immediately before Java leaderboard call")
+	print(
+		"SYNC TEST: immediately before Java leaderboard call for ",
+		key
+	)
 
 	var task = (
 		_leaderboards_client
@@ -238,19 +251,35 @@ func _load_online_record(
 		)
 	)
 
-	print("SYNC TEST: returned from Java leaderboard call")
+	print(
+		"SYNC TEST: returned from Java leaderboard call for ",
+		key
+	)
 
 	_watch_task(
 		task,
 		func(result, error: String) -> void:
-			print("SYNC TEST: task callback fired")
+			print(
+				"SYNC TEST: task callback fired for ",
+				key
+			)
 
 			if not error.is_empty():
-				print("SYNC TEST: task error: ", error)
+				_finish_online_record_load(
+					key,
+					0,
+					false,
+					error
+				)
 				return
 
 			if result == null:
-				print("SYNC TEST: task result is null")
+				_finish_online_record_load(
+					key,
+					0,
+					false,
+					"Leaderboard result unavailable."
+				)
 				return
 
 			var score_helper = JavaClassWrapper.wrap(
@@ -258,29 +287,60 @@ func _load_online_record(
 			)
 
 			if score_helper == null:
-				print("SYNC TEST: score helper unavailable")
+				_finish_online_record_load(
+					key,
+					0,
+					false,
+					"Leaderboard score helper unavailable."
+				)
 				return
 
-			print("SYNC TEST: immediately before Java helper")
+			print(
+				"SYNC TEST: immediately before Java helper for ",
+				key
+			)
 
 			var raw_score_result = score_helper.getRawScore(result)
 
 			var java_exception = JavaClassWrapper.get_exception()
 
 			if java_exception != null:
-				print(
-					"SYNC TEST: Java helper exception: ",
-					java_exception
+				_finish_online_record_load(
+					key,
+					0,
+					false,
+					"Leaderboard score helper failed: "
+					+ str(java_exception)
 				)
 				return
 
 			var raw_score: int = int(raw_score_result)
 
 			print(
-				"SYNC TEST: Java helper returned raw score = ",
+				"SYNC TEST: ",
+				key,
+				" = ",
 				raw_score
 			)
+
+			if raw_score < 0:
+				_finish_online_record_load(
+					key,
+					0,
+					false,
+					"No leaderboard score available."
+				)
+				return
+
+			_finish_online_record_load(
+				key,
+				raw_score,
+				true,
+				""
+			)
 	)
+
+	
 
 
 func _finish_online_record_load(
@@ -348,6 +408,20 @@ func _finish_online_record_load(
 				)
 			)
 		)
+	)
+
+	print(
+		"SYNC TEST: reconciliation complete"
+		+ " | changed_local_save=",
+		changed_local_save,
+		" | high_score=",
+		SaveManager.best_points,
+		" | highest_round=",
+		SaveManager.best_round,
+		" | lifetime_runs=",
+		SaveManager.total_runs,
+		" | lifetime_laps=",
+		SaveManager.total_laps
 	)
 
 	if not _record_sync_had_error:
