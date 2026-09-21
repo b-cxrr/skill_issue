@@ -429,6 +429,7 @@ func _finish_online_record_load(
 			sync_player_id
 		)
 
+
 	records_sync_finished.emit(
 		_record_sync_values.duplicate(),
 		changed_local_save
@@ -634,6 +635,15 @@ func set_service_ready(value: bool) -> void:
 func is_service_ready() -> bool:
 	return service_ready
 
+func is_current_player_save_owner() -> bool:
+	return _owner_matches()
+
+func has_finished_record_sync_for_current_player() -> bool:
+	return (
+		not _active_player_id.is_empty()
+		and _records_synced_player_id
+		== _active_player_id
+	)
 
 func _report_error(message: String) -> void:
 	if message != last_error:

@@ -1,7 +1,10 @@
 extends Node
 
+signal profile_recovered
 
 const SAVE_PATH: String = "user://core_shift_save.dat"
+const PROFILE_SCHEMA_VERSION: int = 1
+const PROFILE_DIAGNOSTICS: bool = true
 
 const DEFAULT_SKIN: String = "default"
 const GILDED_SKIN: String = "gilded"
@@ -30,11 +33,724 @@ var total_near_misses: int = 0
 var total_echoes_destroyed: int = 0
 var token_balance: int = 0
 var total_tokens_collected: int = 0
+var last_profile_validation_error: String = ""
+var local_save_existed_at_startup: bool = false
 
 
 func _ready() -> void:
+	local_save_existed_at_startup = (
+		FileAccess.file_exists(SAVE_PATH)
+	)
+
 	load_data()
 
+	if PROFILE_DIAGNOSTICS:
+		call_deferred("_run_profile_diagnostics")
+		
+
+func build_profile() -> Dictionary:
+	return {
+		"schema_version": PROFILE_SCHEMA_VERSION,
+		"owner_player_id": leaderboard_owner_id,
+
+		"progression": {
+			"best_points": best_points,
+			"best_round": best_round,
+			"total_runs": total_runs,
+			"total_laps": total_laps
+		},
+
+		"stats": {
+			"total_near_misses": total_near_misses,
+			"total_echoes_destroyed": total_echoes_destroyed,
+			"total_tokens_collected": total_tokens_collected
+		},
+
+		"economy": {
+			"token_balance": token_balance
+		},
+
+		"cosmetics": {
+			"level_10_skin_unlocked": level_10_skin_unlocked,
+			"purchased_skins": purchased_skins.duplicate(),
+			"selected_skin": selected_skin
+		}
+	}
+func validate_profile(profile: Variant) -> bool:
+	last_profile_validation_error = ""
+
+	if not profile is Dictionary:
+		return _profile_validation_failed(
+			"Profile root is not a Dictionary."
+		)
+
+	var profile_dictionary: Dictionary = (
+		profile as Dictionary
+	)
+
+	if not profile_dictionary.has("schema_version"):
+		return _profile_validation_failed(
+			"Profile is missing schema_version."
+		)
+
+	if not _is_non_negative_integer_value(
+		profile_dictionary["schema_version"]
+	):
+		return _profile_validation_failed(
+			"schema_version is invalid."
+		)
+
+	if int(
+		profile_dictionary["schema_version"]
+	) != PROFILE_SCHEMA_VERSION:
+		return _profile_validation_failed(
+			"Unsupported profile schema version."
+		)
+
+	if not profile_dictionary.has("owner_player_id"):
+		return _profile_validation_failed(
+			"Profile is missing owner_player_id."
+		)
+
+	if typeof(
+		profile_dictionary["owner_player_id"]
+	) != TYPE_STRING:
+		return _profile_validation_failed(
+			"owner_player_id is invalid."
+		)
+
+	var progression_value: Variant = (
+		profile_dictionary.get(
+			"progression"
+		)
+	)
+
+	if not progression_value is Dictionary:
+		return _profile_validation_failed(
+			"Profile progression section is invalid."
+		)
+
+	var progression: Dictionary = (
+		progression_value as Dictionary
+	)
+
+	if not _validate_non_negative_integer_field(
+		progression,
+		"best_points",
+		"progression.best_points"
+	):
+		return false
+
+	if not _validate_non_negative_integer_field(
+		progression,
+		"best_round",
+		"progression.best_round"
+	):
+		return false
+
+	if not _validate_non_negative_integer_field(
+		progression,
+		"total_runs",
+		"progression.total_runs"
+	):
+		return false
+
+	if not _validate_non_negative_integer_field(
+		progression,
+		"total_laps",
+		"progression.total_laps"
+	):
+		return false
+
+	var stats_value: Variant = (
+		profile_dictionary.get(
+			"stats"
+		)
+	)
+
+	if not stats_value is Dictionary:
+		return _profile_validation_failed(
+			"Profile stats section is invalid."
+		)
+
+	var stats: Dictionary = (
+		stats_value as Dictionary
+	)
+
+	if not _validate_non_negative_integer_field(
+		stats,
+		"total_near_misses",
+		"stats.total_near_misses"
+	):
+		return false
+
+	if not _validate_non_negative_integer_field(
+		stats,
+		"total_echoes_destroyed",
+		"stats.total_echoes_destroyed"
+	):
+		return false
+
+	if not _validate_non_negative_integer_field(
+		stats,
+		"total_tokens_collected",
+		"stats.total_tokens_collected"
+	):
+		return false
+
+	var economy_value: Variant = (
+		profile_dictionary.get(
+			"economy"
+		)
+	)
+
+	if not economy_value is Dictionary:
+		return _profile_validation_failed(
+			"Profile economy section is invalid."
+		)
+
+	var economy: Dictionary = (
+		economy_value as Dictionary
+	)
+
+	if not _validate_non_negative_integer_field(
+		economy,
+		"token_balance",
+		"economy.token_balance"
+	):
+		return false
+
+	var cosmetics_value: Variant = (
+		profile_dictionary.get(
+			"cosmetics"
+		)
+	)
+
+	if not cosmetics_value is Dictionary:
+		return _profile_validation_failed(
+			"Profile cosmetics section is invalid."
+		)
+
+	var cosmetics: Dictionary = (
+		cosmetics_value as Dictionary
+	)
+
+	if not cosmetics.has(
+		"level_10_skin_unlocked"
+	):
+		return _profile_validation_failed(
+			"cosmetics.level_10_skin_unlocked is missing."
+		)
+
+	if typeof(
+		cosmetics["level_10_skin_unlocked"]
+	) != TYPE_BOOL:
+		return _profile_validation_failed(
+			"cosmetics.level_10_skin_unlocked is invalid."
+		)
+
+	var purchased_value: Variant = (
+		cosmetics.get(
+			"purchased_skins"
+		)
+	)
+
+	if not purchased_value is Array:
+		return _profile_validation_failed(
+			"cosmetics.purchased_skins is invalid."
+		)
+
+	var purchased: Array = (
+		purchased_value as Array
+	)
+
+	var seen_skins: Dictionary = {}
+
+	for skin_value: Variant in purchased:
+		if typeof(skin_value) != TYPE_STRING:
+			return _profile_validation_failed(
+				"purchased_skins contains a non-string value."
+			)
+
+		var skin_name: String = str(
+			skin_value
+		)
+
+		if not _is_purchasable_skin(
+			skin_name
+		):
+			return _profile_validation_failed(
+				"purchased_skins contains an unknown skin."
+			)
+
+		if seen_skins.has(skin_name):
+			return _profile_validation_failed(
+				"purchased_skins contains a duplicate skin."
+			)
+
+		seen_skins[skin_name] = true
+
+	if not cosmetics.has("selected_skin"):
+		return _profile_validation_failed(
+			"cosmetics.selected_skin is missing."
+		)
+
+	if typeof(
+		cosmetics["selected_skin"]
+	) != TYPE_STRING:
+		return _profile_validation_failed(
+			"cosmetics.selected_skin is invalid."
+		)
+
+	var selected: String = str(
+		cosmetics["selected_skin"]
+	)
+
+	if not _is_known_skin(selected):
+		return _profile_validation_failed(
+			"selected_skin is unknown."
+		)
+
+	var gilded_unlocked: bool = bool(
+		cosmetics["level_10_skin_unlocked"]
+	)
+
+	if (
+		selected == GILDED_SKIN
+		and not gilded_unlocked
+	):
+		return _profile_validation_failed(
+			"selected_skin is Gilded but Gilded is locked."
+		)
+
+	if (
+		_is_purchasable_skin(selected)
+		and not purchased.has(selected)
+	):
+		return _profile_validation_failed(
+			"selected_skin is not owned."
+		)
+
+	return true
+
+
+func serialize_profile(
+	profile: Dictionary
+) -> String:
+	if not validate_profile(profile):
+		return ""
+
+	var normalised_profile: Dictionary = (
+		_normalise_profile(profile)
+	)
+
+	return JSON.stringify(
+		normalised_profile
+	)
+
+
+func deserialize_profile(
+	serialized_profile: String
+) -> Dictionary:
+	if serialized_profile.is_empty():
+		_profile_validation_failed(
+			"Serialized profile is empty."
+		)
+		return {}
+
+	var parsed_profile: Variant = (
+		JSON.parse_string(
+			serialized_profile
+		)
+	)
+
+	if not validate_profile(parsed_profile):
+		return {}
+
+	return _normalise_profile(
+		parsed_profile as Dictionary
+	)
+
+
+func _normalise_profile(
+	profile: Dictionary
+) -> Dictionary:
+	var progression: Dictionary = (
+		profile["progression"] as Dictionary
+	)
+
+	var stats: Dictionary = (
+		profile["stats"] as Dictionary
+	)
+
+	var economy: Dictionary = (
+		profile["economy"] as Dictionary
+	)
+
+	var cosmetics: Dictionary = (
+		profile["cosmetics"] as Dictionary
+	)
+
+	var normalised_purchased: Array[String] = []
+
+	for skin_value: Variant in cosmetics["purchased_skins"]:
+		normalised_purchased.append(
+			str(skin_value)
+		)
+
+	return {
+		"schema_version": int(
+			profile["schema_version"]
+		),
+		"owner_player_id": str(
+			profile["owner_player_id"]
+		),
+
+		"progression": {
+			"best_points": int(
+				progression["best_points"]
+			),
+			"best_round": int(
+				progression["best_round"]
+			),
+			"total_runs": int(
+				progression["total_runs"]
+			),
+			"total_laps": int(
+				progression["total_laps"]
+			)
+		},
+
+		"stats": {
+			"total_near_misses": int(
+				stats["total_near_misses"]
+			),
+			"total_echoes_destroyed": int(
+				stats["total_echoes_destroyed"]
+			),
+			"total_tokens_collected": int(
+				stats["total_tokens_collected"]
+			)
+		},
+
+		"economy": {
+			"token_balance": int(
+				economy["token_balance"]
+			)
+		},
+
+		"cosmetics": {
+			"level_10_skin_unlocked": bool(
+				cosmetics["level_10_skin_unlocked"]
+			),
+			"purchased_skins": normalised_purchased,
+			"selected_skin": str(
+				cosmetics["selected_skin"]
+			)
+		}
+	}
+
+func started_with_local_save() -> bool:
+	return local_save_existed_at_startup
+
+
+func apply_cloud_recovery_profile(
+	profile: Dictionary
+) -> bool:
+	if local_save_existed_at_startup:
+		return false
+
+	if not validate_profile(profile):
+		return false
+
+	var cloud_owner: String = str(
+		profile.get(
+			"owner_player_id",
+			""
+		)
+	)
+
+	if (
+		cloud_owner.is_empty()
+		or cloud_owner != leaderboard_owner_id
+	):
+		return false
+
+	var progression: Dictionary = (
+		profile.get(
+			"progression",
+			{}
+		)
+	)
+
+	var stats: Dictionary = (
+		profile.get(
+			"stats",
+			{}
+		)
+	)
+
+	var economy: Dictionary = (
+		profile.get(
+			"economy",
+			{}
+		)
+	)
+
+	var cosmetics: Dictionary = (
+		profile.get(
+			"cosmetics",
+			{}
+		)
+	)
+
+	# Leaderboard-backed fields may already have been
+	# recovered from Google Play Games. Never lower them.
+	best_points = max(
+		best_points,
+		int(
+			progression.get(
+				"best_points",
+				0
+			)
+		)
+	)
+
+	best_round = max(
+		best_round,
+		int(
+			progression.get(
+				"best_round",
+				0
+			)
+		)
+	)
+
+	total_runs = max(
+		total_runs,
+		int(
+			progression.get(
+				"total_runs",
+				0
+			)
+		)
+	)
+
+	total_laps = max(
+		total_laps,
+		int(
+			progression.get(
+				"total_laps",
+				0
+			)
+		)
+	)
+
+	# These are monotonic lifetime counters.
+	total_near_misses = max(
+		total_near_misses,
+		int(
+			stats.get(
+				"total_near_misses",
+				0
+			)
+		)
+	)
+
+	total_echoes_destroyed = max(
+		total_echoes_destroyed,
+		int(
+			stats.get(
+				"total_echoes_destroyed",
+				0
+			)
+		)
+	)
+
+	total_tokens_collected = max(
+		total_tokens_collected,
+		int(
+			stats.get(
+				"total_tokens_collected",
+				0
+			)
+		)
+	)
+
+	# Token balance is NOT monotonic.
+	# This assignment is permitted only because this
+	# process started without a local save.
+	token_balance = int(
+		economy.get(
+			"token_balance",
+			0
+		)
+	)
+
+	level_10_skin_unlocked = bool(
+		cosmetics.get(
+			"level_10_skin_unlocked",
+			false
+		)
+	)
+
+	purchased_skins.clear()
+
+	var cloud_purchased_skins: Array = (
+		cosmetics.get(
+			"purchased_skins",
+			[]
+		)
+	)
+
+	for skin_name: Variant in cloud_purchased_skins:
+		purchased_skins.append(
+			str(skin_name)
+		)
+
+	selected_skin = str(
+		cosmetics.get(
+			"selected_skin",
+			DEFAULT_SKIN
+		)
+	)
+
+	save_data()
+	profile_recovered.emit()
+
+	return true
+
+func _validate_non_negative_integer_field(
+	section: Dictionary,
+	key: String,
+	label: String
+) -> bool:
+	if not section.has(key):
+		return _profile_validation_failed(
+			label + " is missing."
+		)
+
+	if not _is_non_negative_integer_value(
+		section[key]
+	):
+		return _profile_validation_failed(
+			label + " is invalid."
+		)
+
+	return true
+
+
+func _is_non_negative_integer_value(
+	value: Variant
+) -> bool:
+	var value_type: int = typeof(value)
+
+	if (
+		value_type != TYPE_INT
+		and value_type != TYPE_FLOAT
+	):
+		return false
+
+	var numeric_value: float = float(value)
+
+	return (
+		numeric_value >= 0.0
+		and numeric_value == floor(numeric_value)
+	)
+
+
+func _is_known_skin(
+	skin_name: String
+) -> bool:
+	return (
+		skin_name == DEFAULT_SKIN
+		or skin_name == GILDED_SKIN
+		or skin_name == CRIMSON_SKIN
+		or skin_name == VOLTAGE_SKIN
+		or skin_name == GLITCH_SKIN
+	)
+
+func _is_purchasable_skin(
+	skin_name: String
+) -> bool:
+	return (
+		skin_name == CRIMSON_SKIN
+		or skin_name == VOLTAGE_SKIN
+		or skin_name == GLITCH_SKIN
+	)
+
+
+func _profile_validation_failed(
+	message: String
+) -> bool:
+	last_profile_validation_error = message
+	return false
+
+func run_profile_round_trip_test() -> bool:
+	var original_profile: Dictionary = (
+		build_profile()
+	)
+
+	var serialized_profile: String = (
+		serialize_profile(
+			original_profile
+		)
+	)
+
+	if serialized_profile.is_empty():
+		return false
+
+	var restored_profile: Dictionary = (
+		deserialize_profile(
+			serialized_profile
+		)
+	)
+
+	if restored_profile.is_empty():
+		return false
+
+	var expected_profile: Dictionary = (
+		_normalise_profile(
+			original_profile
+		)
+	)
+
+	if expected_profile != restored_profile:
+		return _profile_validation_failed(
+			"Profile changed during serialization round-trip."
+		)
+
+	return true
+
+
+func _run_profile_diagnostics() -> void:
+	var profile_valid: bool = (
+		validate_profile(
+			build_profile()
+		)
+	)
+
+	var round_trip_valid: bool = false
+
+	if profile_valid:
+		round_trip_valid = (
+			run_profile_round_trip_test()
+		)
+
+	print(
+		"PROFILE TEST: validation=",
+		profile_valid,
+		" | round_trip=",
+		round_trip_valid,
+		" | schema=",
+		PROFILE_SCHEMA_VERSION
+	)
+
+	if not profile_valid or not round_trip_valid:
+		print(
+			"PROFILE TEST: error=",
+			last_profile_validation_error
+		)
 
 func submit_points(points: int) -> bool:
 	if points <= best_points:

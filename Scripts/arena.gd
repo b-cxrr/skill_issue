@@ -169,6 +169,10 @@ func _ready() -> void:
 		_on_cosmetics_skin_changed
 	)
 
+	SaveManager.profile_recovered.connect(
+		_on_profile_recovered
+	)
+
 	leaderboards_button.pressed.connect(
 		_on_leaderboards_button_pressed
 	)
@@ -1566,6 +1570,14 @@ func _highlight_hazard(
 	)
 func _on_leaderboards_button_pressed() -> void:
 	LeaderboardManager.show_all_leaderboards()
+
+func _on_profile_recovered() -> void:
+	player.set_skin(
+		SaveManager.selected_skin
+	)
+
+	_update_skin_button()
+	_update_token_balance_display()
 
 func _on_cosmetics_menu_closed() -> void:
 	cosmetics_menu_open = false
