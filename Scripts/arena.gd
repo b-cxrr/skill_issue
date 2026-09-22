@@ -20,6 +20,8 @@ extends Node2D
 @onready var skin_button: Button = (%SkinButton)
 @onready var game_over_vbox: VBoxContainer = (%GameOverVBox)
 @onready var leaderboards_button: Button = %LeaderboardsButton
+@onready var stats_button: Button = %StatsButton
+@onready var player_stats_menu = %PlayerStatsMenu
 @onready var near_miss_label: Label = (%NearMissLabel)
 @onready var pause_menu: SkillPauseMenu = (%PauseMenu)
 @onready var game_over_overlay: ColorRect = (%GameOverOverlay)
@@ -98,6 +100,7 @@ var laps_since_power_up: int = 0
 var echoes_destroyed_this_run: int = 0
 var tokens_collected_this_run: int = 0
 var cosmetics_menu_open: bool = false
+var stats_menu_open: bool = false
 
 const LapSafety = preload("res://Scripts/lap_safety.gd")
 const ECHO_SPAWN_PHASE: float = 0.35
@@ -176,7 +179,16 @@ func _ready() -> void:
 	leaderboards_button.pressed.connect(
 		_on_leaderboards_button_pressed
 	)
+	stats_button.pressed.connect(
+		_on_stats_button_pressed
+	)
 
+	player_stats_menu.closed.connect(
+		_on_stats_menu_closed
+	)
+	
+	
+	
 	_update_skin_button()
 	pause_menu.call_deferred("set_gameplay_available",false)
 	
@@ -526,10 +538,13 @@ func _destroy_echo_with_power_up(
 	echo.queue_free()
 
 func _unhandled_input(event: InputEvent) -> void:
-	
-	if cosmetics_menu_open:
+	if (
+		cosmetics_menu_open
+		or stats_menu_open
+	):
 		return
-	
+
+
 	var pressed: bool = false
 
 	if event is InputEventScreenTouch:
@@ -554,7 +569,6 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not game_started:
 		_start_game()
 
-		# Prevent the starting tap from also switching lanes.
 		get_viewport().set_input_as_handled()
 		return
 
@@ -1571,6 +1585,19 @@ func _highlight_hazard(
 func _on_leaderboards_button_pressed() -> void:
 	LeaderboardManager.show_all_leaderboards()
 
+
+
+func _on_stats_button_pressed() -> void:
+	if game_started and not is_game_over:
+		return
+
+	stats_menu_open = true
+	player_stats_menu.open_menu()
+
+
+func _on_stats_menu_closed() -> void:
+	stats_menu_open = false
+
 func _on_profile_recovered() -> void:
 	player.set_skin(
 		SaveManager.selected_skin
@@ -2340,7 +2367,8 @@ func _destroy_gate_with_power_up(
 	hazard_close_states.erase(
 		gate.get_instance_id()
 	)
-
+	if run_is_ranked:
+		SaveManager.record_gate_destroyed()
 	burst_particles.create_burst(
 		gate.position,
 		GATE_BREAKER_COLOUR,

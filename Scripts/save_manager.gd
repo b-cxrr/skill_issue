@@ -3,7 +3,7 @@ extends Node
 signal profile_recovered
 
 const SAVE_PATH: String = "user://core_shift_save.dat"
-const PROFILE_SCHEMA_VERSION: int = 1
+const PROFILE_SCHEMA_VERSION: int = 2
 const PROFILE_DIAGNOSTICS: bool = true
 
 const DEFAULT_SKIN: String = "default"
@@ -31,6 +31,7 @@ var total_runs: int = 0
 var total_laps: int = 0
 var total_near_misses: int = 0
 var total_echoes_destroyed: int = 0
+var total_gates_destroyed: int = 0
 var token_balance: int = 0
 var total_tokens_collected: int = 0
 var last_profile_validation_error: String = ""
@@ -63,7 +64,9 @@ func build_profile() -> Dictionary:
 		"stats": {
 			"total_near_misses": total_near_misses,
 			"total_echoes_destroyed": total_echoes_destroyed,
+			"total_gates_destroyed": total_gates_destroyed,
 			"total_tokens_collected": total_tokens_collected
+			
 		},
 
 		"economy": {
@@ -188,6 +191,13 @@ func validate_profile(profile: Variant) -> bool:
 		stats,
 		"total_echoes_destroyed",
 		"stats.total_echoes_destroyed"
+	):
+		return false
+
+	if not _validate_non_negative_integer_field(
+		stats,
+		"total_gates_destroyed",
+		"stats.total_gates_destroyed"
 	):
 		return false
 
@@ -348,6 +358,74 @@ func serialize_profile(
 		normalised_profile
 	)
 
+func _migrate_profile_to_current(
+	profile: Dictionary
+) -> Dictionary:
+	if not profile.has("schema_version"):
+		_profile_validation_failed(
+			"Profile is missing schema_version."
+		)
+		return {}
+
+	var schema_value: Variant = (
+		profile["schema_version"]
+	)
+
+	if not _is_non_negative_integer_value(
+		schema_value
+	):
+		_profile_validation_failed(
+			"schema_version is invalid."
+		)
+		return {}
+
+	var schema_version: int = int(
+		schema_value
+	)
+
+	if schema_version == PROFILE_SCHEMA_VERSION:
+		return profile.duplicate(true)
+
+	if schema_version == 1:
+		var migrated_profile: Dictionary = (
+			profile.duplicate(true)
+		)
+
+		var stats_value: Variant = (
+			migrated_profile.get(
+				"stats"
+			)
+		)
+
+		if not stats_value is Dictionary:
+			_profile_validation_failed(
+				"Profile stats section is invalid."
+			)
+			return {}
+
+		var migrated_stats: Dictionary = (
+			(stats_value as Dictionary).duplicate(true)
+		)
+
+		migrated_stats[
+			"total_gates_destroyed"
+		] = 0
+
+		migrated_profile["stats"] = (
+			migrated_stats
+		)
+
+		migrated_profile["schema_version"] = (
+			PROFILE_SCHEMA_VERSION
+		)
+
+		return migrated_profile
+
+	_profile_validation_failed(
+		"Unsupported profile schema version."
+	)
+
+	return {}
 
 func deserialize_profile(
 	serialized_profile: String
@@ -363,12 +441,28 @@ func deserialize_profile(
 			serialized_profile
 		)
 	)
+	if not parsed_profile is Dictionary:
+		_profile_validation_failed(
+			"Profile root is not a Dictionary."
+		)
+		return {}
 
-	if not validate_profile(parsed_profile):
+	var migrated_profile: Dictionary = (
+		_migrate_profile_to_current(
+			parsed_profile as Dictionary
+		)
+	)
+
+	if migrated_profile.is_empty():
+		return {}
+
+	if not validate_profile(
+		migrated_profile
+	):
 		return {}
 
 	return _normalise_profile(
-		parsed_profile as Dictionary
+		migrated_profile
 	)
 
 
@@ -427,6 +521,9 @@ func _normalise_profile(
 			),
 			"total_echoes_destroyed": int(
 				stats["total_echoes_destroyed"]
+			),
+			"total_gates_destroyed": int(
+				stats["total_gates_destroyed"]
 			),
 			"total_tokens_collected": int(
 				stats["total_tokens_collected"]
@@ -562,6 +659,16 @@ func apply_cloud_recovery_profile(
 		int(
 			stats.get(
 				"total_echoes_destroyed",
+				0
+			)
+		)
+	)
+
+	total_gates_destroyed = max(
+		total_gates_destroyed,
+		int(
+			stats.get(
+				"total_gates_destroyed",
 				0
 			)
 		)
@@ -722,6 +829,58 @@ func run_profile_round_trip_test() -> bool:
 
 	return true
 
+func run_profile_v1_migration_test() -> bool:
+	var legacy_profile: Dictionary = (
+		build_profile()
+	)
+
+	legacy_profile["schema_version"] = 1
+
+	var legacy_stats: Dictionary = (
+		legacy_profile["stats"] as Dictionary
+	)
+
+	legacy_stats.erase(
+		"total_gates_destroyed"
+	)
+
+	var serialized_legacy: String = (
+		JSON.stringify(
+			legacy_profile
+		)
+	)
+
+	var migrated_profile: Dictionary = (
+		deserialize_profile(
+			serialized_legacy
+		)
+	)
+
+	if migrated_profile.is_empty():
+		return false
+
+	if int(
+		migrated_profile["schema_version"]
+	) != PROFILE_SCHEMA_VERSION:
+		return _profile_validation_failed(
+			"Profile v1 migration did not update schema."
+		)
+
+	var migrated_stats: Dictionary = (
+		migrated_profile["stats"] as Dictionary
+	)
+
+	if int(
+		migrated_stats.get(
+			"total_gates_destroyed",
+			-1
+		)
+	) != 0:
+		return _profile_validation_failed(
+			"Profile v1 migration produced invalid gate count."
+		)
+
+	return true
 
 func _run_profile_diagnostics() -> void:
 	var profile_valid: bool = (
@@ -731,22 +890,33 @@ func _run_profile_diagnostics() -> void:
 	)
 
 	var round_trip_valid: bool = false
+	var migration_valid: bool = false
 
 	if profile_valid:
 		round_trip_valid = (
 			run_profile_round_trip_test()
 		)
 
+	migration_valid = (
+		run_profile_v1_migration_test()
+	)
+
 	print(
 		"PROFILE TEST: validation=",
 		profile_valid,
 		" | round_trip=",
 		round_trip_valid,
+		" | migration_v1=",
+		migration_valid,
 		" | schema=",
 		PROFILE_SCHEMA_VERSION
 	)
 
-	if not profile_valid or not round_trip_valid:
+	if (
+		not profile_valid
+		or not round_trip_valid
+		or not migration_valid
+	):
 		print(
 			"PROFILE TEST: error=",
 			last_profile_validation_error
@@ -923,6 +1093,7 @@ func save_data() -> void:
 		"total_laps": total_laps,
 		"total_near_misses": total_near_misses,
 		"total_echoes_destroyed": total_echoes_destroyed,
+		"total_gates_destroyed": total_gates_destroyed,
 		"token_balance": token_balance,
 		"total_tokens_collected": total_tokens_collected,
 		"purchased_skins": purchased_skins
@@ -1019,6 +1190,14 @@ func load_data() -> void:
 			0
 		)
 	)
+	
+	total_gates_destroyed = int(
+		save_dictionary.get(
+			"total_gates_destroyed",
+			0
+		)
+	)
+	
 	token_balance = int(
 	save_dictionary.get(
 		"token_balance",
@@ -1110,6 +1289,9 @@ func record_echo_destroyed() -> void:
 	total_echoes_destroyed += 1
 	save_data()
 
+func record_gate_destroyed() -> void:
+	total_gates_destroyed += 1
+	save_data()
 
 func add_tokens(amount: int) -> void:
 	if amount <= 0:
