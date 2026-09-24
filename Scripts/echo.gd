@@ -16,6 +16,7 @@ var starting_angle: float = -PI / 2.0
 
 var visual_time: float = 0.0
 var lane_switch_warning: bool = false
+var _spawn_physics_frame: int = -1
 
 
 func setup(
@@ -34,6 +35,7 @@ func setup(
 
 	warning_lead_time = warning_time
 	travelled_angle = phase_offset
+	_spawn_physics_frame = Engine.get_physics_frames()
 
 	var collision_shape: CollisionShape2D = (
 		$CollisionShape2D
@@ -54,6 +56,8 @@ func setup(
 func _ready() -> void:
 	visual_time = randf_range(0.0, TAU)
 	z_index = 5
+	# Existing Echoes advance before the player builds the next lap.
+	process_physics_priority = -10
 
 	# Echoes occupy layer 2 and detect layer 1.
 	collision_layer = 2
@@ -70,20 +74,38 @@ func _process(delta: float) -> void:
 	if recorded_path.size() < 2:
 		return
 
-	travelled_angle += angular_speed * delta
-
 	visual_time = fposmod(
 		visual_time + delta,
 		TAU
 	)
 
-	_update_echo_position()
 	queue_redraw()
 
 
-func _sample_recorded_radius(
-	cycle_angle: float
-) -> float:
+func _physics_process(delta: float) -> void:
+	if recorded_path.size() < 2 or is_queued_for_deletion():
+		return
+	if Engine.get_physics_frames() == _spawn_physics_frame:
+		return
+	travelled_angle += angular_speed * delta
+	_update_echo_position()
+
+
+func get_motion_speed_bound() -> float:
+	if recorded_path.size() < 2:
+		return 0.0
+	var largest_radius: float = 0.0
+	var largest_step: float = 0.0
+	for index: int in range(recorded_path.size()):
+		largest_radius = maxf(largest_radius, absf(recorded_path[index]))
+		if index > 0:
+			largest_step = maxf(largest_step, absf(recorded_path[index] - recorded_path[index - 1]))
+	var radial_slope: float = largest_step * float(recorded_path.size() - 1) / TAU
+	return angular_speed * (largest_radius + radial_slope)
+
+
+func _sample_recorded_radius(cycle_angle: float) -> float:
+	
 	if recorded_path.size() < 2:
 		return 0.0
 
@@ -122,7 +144,42 @@ func _sample_recorded_radius(
 		recorded_path[upper_index],
 		interpolation_weight
 	)
+func get_predicted_position(
+	seconds_ahead: float
+) -> Vector2:
+	if recorded_path.size() < 2:
+		return position
 
+	var prediction_time: float = maxf(
+		seconds_ahead,
+		0.0
+	)
+
+	var predicted_travelled_angle: float = (
+		travelled_angle
+		+ angular_speed * prediction_time
+	)
+
+	var predicted_cycle_angle: float = fposmod(
+		predicted_travelled_angle,
+		TAU
+	)
+
+	var predicted_radius: float = (
+		_sample_recorded_radius(
+			predicted_cycle_angle
+		)
+	)
+
+	var predicted_angle: float = (
+		starting_angle
+		- predicted_cycle_angle
+	)
+
+	return (
+		Vector2.from_angle(predicted_angle)
+		* predicted_radius
+	)
 
 func _update_echo_position() -> void:
 	if recorded_path.size() < 2:

@@ -1,0 +1,12 @@
+[gd_scene format=3 uid="uid://dlcdcbmtrk1cv"]
+
+[ext_resource type="Script" uid="uid://benn4stfk6jaq" path="res://Scripts/token.gd" id="1_2mdww"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_g868d"]
+radius = 14.0
+
+[node name="Token" type="Area2D" unique_id=955651934]
+script = ExtResource("1_2mdww")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1654838447]
+shape = SubResource("CircleShape2D_g868d")

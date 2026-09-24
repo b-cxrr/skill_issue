@@ -1,0 +1,8 @@
+[gd_scene format=3 uid="uid://cxuxdn2fsl3yr"]
+
+[ext_resource type="Script" uid="uid://olumot4y1cm8" path="res://Scripts/lapshockwave.gd" id="1_qgyw5"]
+
+[node name="Lapshockwave" type="Node2D" unique_id=1456364780]
+script = ExtResource("1_qgyw5")
+
+[node name="Ring" type="Line2D" parent="." unique_id=1157985730]
