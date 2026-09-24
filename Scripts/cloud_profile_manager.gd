@@ -412,18 +412,6 @@ func _run_initial_listing() -> void:
 				summary
 			)
 
-			if summary == "count=0|files=":
-				print(
-					"CLOUD TEST: no cloud profile exists; "
-					+ "creating current profile"
-				)
-
-				_write_current_profile_to_cloud(
-					"initial_create",
-					true
-				)
-				return
-
 			if summary.contains(
 				PROFILE_SNAPSHOT_NAME
 			):
@@ -431,9 +419,15 @@ func _run_initial_listing() -> void:
 				return
 
 			print(
-				"CLOUD TEST: unexpected snapshot state; "
-				+ "cloud flow aborted"
+				"CLOUD TEST: profile snapshot not found; "
+				+ "creating current profile"
 			)
+
+			_write_current_profile_to_cloud(
+				"initial_create",
+				true
+			)
+			return
 	)
 
 
