@@ -1,6 +1,10 @@
 extends Node
 
 signal profile_recovered
+signal profile_changed(
+	reason: String,
+	urgent: bool
+)
 
 const SAVE_PATH: String = "user://core_shift_save.dat"
 const PROFILE_SCHEMA_VERSION: int = 2
@@ -35,14 +39,10 @@ var total_gates_destroyed: int = 0
 var token_balance: int = 0
 var total_tokens_collected: int = 0
 var last_profile_validation_error: String = ""
-var local_save_existed_at_startup: bool = false
+var valid_local_save_loaded_at_startup: bool = false
 
 
 func _ready() -> void:
-	local_save_existed_at_startup = (
-		FileAccess.file_exists(SAVE_PATH)
-	)
-
 	load_data()
 
 	if PROFILE_DIAGNOSTICS:
@@ -548,13 +548,13 @@ func _normalise_profile(
 	}
 
 func started_with_local_save() -> bool:
-	return local_save_existed_at_startup
+	return valid_local_save_loaded_at_startup
 
 
 func apply_cloud_recovery_profile(
 	profile: Dictionary
-) -> bool:
-	if local_save_existed_at_startup:
+	) -> bool:
+	if valid_local_save_loaded_at_startup:
 		return false
 
 	if not validate_profile(profile):
@@ -928,7 +928,10 @@ func submit_points(points: int) -> bool:
 
 	best_points = points
 	save_data()
-
+	profile_changed.emit(
+		"high_score",
+		false
+	)
 	return true
 
 
@@ -963,7 +966,10 @@ func record_completed_run(
 		best_points = points_earned
 
 	save_data()
-
+	profile_changed.emit(
+	"completed_run",
+	true
+)
 	return {
 		"new_best_round": got_new_best_round,
 		"new_best_points": got_new_best_points
@@ -994,6 +1000,11 @@ func reconcile_online_records(
 
 	if changed:
 		save_data()
+		profile_changed.emit(
+			"leaderboard_reconcile",
+			false
+		)
+			
 
 	return changed
 
@@ -1069,6 +1080,10 @@ func unlock_level_10_skin() -> bool:
 	selected_skin = GILDED_SKIN
 	save_data()
 
+	profile_changed.emit(
+	"gilded_unlocked",
+	true
+)
 	return true
 
 
@@ -1122,6 +1137,15 @@ func load_data() -> void:
 	var save_dictionary: Dictionary = (
 		data as Dictionary
 	)
+
+	if not (
+		save_dictionary.has("best_round")
+		or save_dictionary.has("best_score")
+	):
+		push_warning(
+			"Save data is missing core progression data."
+		)
+		return
 
 	leaderboard_owner_id = str(save_dictionary.get("leaderboard_owner_id", ""))
 	var saved_pending: Variant = save_dictionary.get("leaderboard_pending_scores", {})
@@ -1284,14 +1308,27 @@ func load_data() -> void:
 	# after they have loaded successfully.
 	if migrated_old_save:
 		save_data()
+	valid_local_save_loaded_at_startup = true
 
 func record_echo_destroyed() -> void:
 	total_echoes_destroyed += 1
 	save_data()
 
+	profile_changed.emit(
+		"echo_destroyed",
+		false
+	)
+
+
 func record_gate_destroyed() -> void:
 	total_gates_destroyed += 1
 	save_data()
+
+	profile_changed.emit(
+		"gate_destroyed",
+		false
+	)
+
 
 func add_tokens(amount: int) -> void:
 	if amount <= 0:
@@ -1301,6 +1338,11 @@ func add_tokens(amount: int) -> void:
 	total_tokens_collected += amount
 
 	save_data()
+
+	profile_changed.emit(
+		"tokens_added",
+		false
+	)
 
 
 func spend_tokens(amount: int) -> bool:
@@ -1339,4 +1381,13 @@ func purchase_skin(skin_name: String) -> bool:
 
 	save_data()
 
+	profile_changed.emit(
+		"skin_purchased",
+		true
+	)
+
+	profile_changed.emit(
+		"tokens_spent",
+		true
+	)
 	return true

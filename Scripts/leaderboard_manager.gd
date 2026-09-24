@@ -324,11 +324,17 @@ func _load_online_record(
 			)
 
 			if raw_score < 0:
+				print(
+					"SYNC TEST: no existing score for ",
+					key,
+					"; treating as zero"
+				)
+
 				_finish_online_record_load(
 					key,
 					0,
-					false,
-					"No leaderboard score available."
+					true,
+					""
 				)
 				return
 
